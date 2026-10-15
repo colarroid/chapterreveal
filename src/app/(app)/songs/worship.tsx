@@ -1,0 +1,960 @@
+"use client";
+
+import {
+  AudioLines,
+  ChevronLeft,
+  ChevronRight,
+  ExternalLink,
+  LoaderCircle,
+  Mic,
+  MonitorOff,
+  MonitorUp,
+  Music,
+  Pencil,
+  Plus,
+  Search,
+  Square,
+  Trash2,
+  Undo2,
+  WifiOff,
+  X,
+  Zap,
+} from "lucide-react";
+import { useRouter } from "next/navigation";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { confirmDialog } from "@/components/confirm";
+import { askToGoLive } from "@/lib/live/present-check";
+import { DisplayQuick } from "@/components/display-quick";
+import { Dropdown } from "@/components/dropdown";
+import { SlideView } from "@/components/slide-view";
+import { cleanDisplay, type DisplaySettings } from "@/lib/display/theme";
+import { Button, Chip, IconButton, Kbd } from "@/components/ui";
+import { closeProjector, presentOnProjector, useProjectorOpen } from "@/lib/live/present";
+import { CONSOLE_CHANNEL, ScreenSender, type ConsoleMessage } from "@/lib/live/screen";
+import type { Slide } from "@/lib/scripture/bible";
+import { songKeyterms } from "@/lib/songs/keyterms";
+import { SongIndex, type SongMatch } from "@/lib/songs/matcher";
+import { firstLine, songBody, type SongSlide } from "@/lib/songs/songs";
+import { supabaseBrowser } from "@/lib/supabase/client";
+import { EndServiceButton, LevelMeter } from "../dashboard/console";
+import { useLiveService } from "../dashboard/use-live-service";
+import { SetlistPanel, type Setlist } from "./setlist";
+import { SongEditor, type SongFields } from "./song-editor";
+
+export interface LibrarySong {
+  id: string;
+  title: string;
+  author: string;
+  firstLine: string;
+  /** In the shared library (read-only here), not the church's own. */
+  shared: boolean;
+}
+
+type LibraryFilter = "all" | "church";
+const FILTERS: { value: LibraryFilter; label: string; empty: string }[] = [
+  { value: "all", label: "All songs", empty: "No songs yet. Add one: paste the lyrics from anywhere." },
+  { value: "church", label: "Our church's songs", empty: "Your church hasn't added any songs yet." },
+];
+const FILTER_KEY = "scripture.songFilter";
+const SETLIST_KEY = "scripture.setlist";
+
+interface FullSong {
+  id: string;
+  title: string;
+  author: string;
+  copyright: string;
+  ccli_number: string;
+  slides: SongSlide[];
+  shared: boolean;
+}
+
+const AUTO_KEY = "scripture.worshipAuto";
+const PAGE = 1000;
+const SHOWN = 300;
+
+const fold = (s: string) =>
+  s
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase();
+
+/** Per song, per slide index: the words as they'll be sung today. */
+type Edits = Record<string, Record<number, string>>;
+
+function withEdits(song: FullSong, edits: Edits): FullSong {
+  const e = edits[song.id];
+  if (!e || !Object.keys(e).length) return song;
+  return { ...song, slides: song.slides.map((s, i) => (e[i] !== undefined ? { ...s, text: e[i] } : s)) };
+}
+
+function toSlide(song: FullSong, i: number): Slide | null {
+  const s = song.slides[i];
+  if (!s) return null;
+  return {
+    kind: "song",
+    label: `${song.title} (${i + 1}/${song.slides.length})`,
+    lines: s.text.split("\n").map((text) => ({ verse: 0, text })),
+    translation: "",
+    copyright: song.copyright || undefined,
+  };
+}
+
+/** Every song's words, in pages, for following the singing and searching lyrics. */
+async function loadAllSongs(): Promise<FullSong[]> {
+  const out: FullSong[] = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await supabaseBrowser()
+      .from("songs")
+      .select("id, title, author, copyright, ccli_number, slides, church_id")
+      .order("title")
+      .range(from, from + PAGE - 1);
+    if (error) throw error;
+    for (const r of data ?? []) out.push({ ...(r as Omit<FullSong, "shared">), shared: r.church_id === null });
+    if (!data || data.length < PAGE) return out;
+  }
+}
+
+export function Worship({
+  churchId,
+  userId,
+  screenToken,
+  silenceEndMinutes,
+  library,
+  setlists: initialSetlists,
+  display: initialDisplay,
+  canEditDisplay,
+}: {
+  churchId: string;
+  userId: string;
+  screenToken: string;
+  silenceEndMinutes: number;
+  library: LibrarySong[];
+  setlists: Setlist[];
+  /** How the projector looks (Settings → Display). */
+  display: DisplaySettings;
+  /** Church admins can change the look from the console. */
+  canEditDisplay: boolean;
+}) {
+  const router = useRouter();
+
+  // ---- The songs' words, loaded in the background --------------------------
+  const [songs, setSongs] = useState<FullSong[] | null>(null);
+  const [loadError, setLoadError] = useState("");
+  useEffect(() => {
+    let live = true;
+    loadAllSongs().then(
+      (s) => live && setSongs(s),
+      () => live && setLoadError("Could not load the songs. Check the connection and reload."),
+    );
+    return () => {
+      live = false;
+    };
+  }, []);
+  const byId = useMemo(() => new Map((songs ?? []).map((s, i) => [s.id, i])), [songs]);
+  const index = useMemo(() => (songs ? new SongIndex(songs) : null), [songs]);
+
+  // ---- Setlists --------------------------------------------------------------
+  // The chosen setlist's songs are listened for first; songs outside it are
+  // only ever suggested, never put up on their own.
+  const [setlists, setSetlists] = useState(initialSetlists);
+  const [setlistId, setSetlistId] = useState<string | null>(null);
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(SETLIST_KEY);
+      if (saved && initialSetlists.some((s) => s.id === saved)) setSetlistId(saved);
+    } catch {}
+  }, [initialSetlists]);
+  const chooseSetlist = useCallback((id: string | null) => {
+    setSetlistId(id);
+    try {
+      if (id) localStorage.setItem(SETLIST_KEY, id);
+      else localStorage.removeItem(SETLIST_KEY);
+    } catch {}
+  }, []);
+  const activeSetlist = setlists.find((s) => s.id === setlistId) ?? null;
+  const setIndex = useMemo(() => {
+    if (!songs || !activeSetlist?.song_ids.length) return null;
+    const list = activeSetlist.song_ids.map((id) => songs[byId.get(id) ?? -1]).filter(Boolean);
+    return list.length ? new SongIndex(list) : null;
+  }, [songs, byId, activeSetlist]);
+  const titles = useMemo(() => new Map(library.map((s) => [s.id, s.title])), [library]);
+
+  const saveSetlist = useCallback(async (id: string, patch: Partial<Pick<Setlist, "name" | "song_ids">>) => {
+    setSetlists((all) => all.map((s) => (s.id === id ? { ...s, ...patch } : s)));
+    await supabaseBrowser()
+      .from("setlists")
+      .update({ ...patch, updated_at: new Date().toISOString() })
+      .eq("id", id);
+  }, []);
+  const createSetlist = useCallback(async () => {
+    const name = new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "numeric", month: "short" }).format(new Date());
+    const { data } = await supabaseBrowser().from("setlists").insert({ church_id: churchId, created_by: userId, name }).select("id, name, song_ids").single();
+    if (!data) return;
+    setSetlists((all) => [data as Setlist, ...all]);
+    chooseSetlist(data.id);
+  }, [churchId, userId, chooseSetlist]);
+  const deleteSetlist = useCallback(
+    async (id: string) => {
+      setSetlists((all) => all.filter((s) => s.id !== id));
+      chooseSetlist(null);
+      await supabaseBrowser().from("setlists").delete().eq("id", id);
+    },
+    [chooseSetlist],
+  );
+  const addToSetlist = useCallback(
+    (songId: string) => {
+      if (activeSetlist && !activeSetlist.song_ids.includes(songId)) void saveSetlist(activeSetlist.id, { song_ids: [...activeSetlist.song_ids, songId] });
+    },
+    [activeSetlist, saveSetlist],
+  );
+
+  // ---- What's selected and what's on screen --------------------------------
+  const [current, setCurrent] = useState<{ id: string; slide: number } | null>(null);
+  const currentRef = useRef(current);
+  const [isLive, setIsLive] = useState(false);
+  const liveRef = useRef(false);
+  const screen = useRef<ScreenSender | null>(null);
+  // Words changed for this service only (a choir that sings it differently).
+  // Kept in memory, never saved: reloading or ending worship drops them.
+  const [edits, setEdits] = useState<Edits>({});
+  const editsRef = useRef(edits);
+  const original = current ? (songs?.[byId.get(current.id) ?? -1] ?? null) : null;
+  const currentSong = useMemo(() => (original ? withEdits(original, edits) : null), [original, edits]);
+
+  const songsRef = useRef(songs);
+  const byIdRef = useRef(byId);
+  useEffect(() => {
+    songsRef.current = songs;
+    byIdRef.current = byId;
+    editsRef.current = edits;
+  }, [songs, byId, edits]);
+  /** A song as it's sung today: the library's words with this service's edits. */
+  const songById = useCallback((id: string) => {
+    const song = songsRef.current?.[byIdRef.current.get(id) ?? -1];
+    return song ? withEdits(song, editsRef.current) : null;
+  }, []);
+
+  /** Changes one slide's words for this service (null puts the original back). */
+  const editSlide = useCallback((songId: string, index: number, text: string | null) => {
+    const next = { ...editsRef.current, [songId]: { ...editsRef.current[songId] } };
+    if (text === null) delete next[songId][index];
+    else next[songId][index] = text;
+    editsRef.current = next;
+    setEdits(next);
+    // The edited slide is on screen: show the new words straight away.
+    const cur = currentRef.current;
+    const song = songById(songId);
+    if (liveRef.current && cur?.id === songId && cur.slide === index && song) void screen.current?.show(toSlide(song, index));
+  }, [songById]);
+  const selectedSlide = currentSong && current ? toSlide(currentSong, current.slide) : null;
+
+  const [token, setToken] = useState(screenToken);
+  const [display, setDisplay] = useState(initialDisplay);
+  useEffect(() => {
+    if (typeof BroadcastChannel === "undefined") return;
+    const bc = new BroadcastChannel(CONSOLE_CHANNEL);
+    bc.onmessage = (e: MessageEvent<ConsoleMessage>) => {
+      if (e.data?.type === "screen-token" && e.data.token) setToken(e.data.token);
+      // Saved in Settings in this browser: use the new look straight away.
+      else if (e.data?.type === "display") setDisplay(cleanDisplay(e.data.display));
+    };
+    return () => bc.close();
+  }, []);
+  useEffect(() => {
+    if (!token) return;
+    const s = new ScreenSender(supabaseBrowser(), churchId, token);
+    screen.current = s;
+    return () => s.close();
+  }, [churchId, token]);
+  // Every slide goes out in the songs look; a new look re-sends what's up.
+  const shownDisplay = useRef(display);
+  useEffect(() => {
+    if (!screen.current) return;
+    screen.current.theme = display.songs;
+    if (shownDisplay.current === display) return;
+    shownDisplay.current = display;
+    const cur = currentRef.current;
+    const song = cur ? songById(cur.id) : null;
+    if (liveRef.current && song && cur) void screen.current.show(toSlide(song, cur.slide));
+  }, [display, token, songById]);
+  const [outputUrl, setOutputUrl] = useState("");
+  useEffect(() => setOutputUrl(token ? `${location.origin}/screen/${token}` : ""), [token]);
+  const [presenting, setPresenting] = useState(false);
+  async function present() {
+    if (!outputUrl) return;
+    if (!liveRef.current && (await askToGoLive("lyrics"))) goLive(true);
+    setPresenting(true);
+    await presentOnProjector(outputUrl);
+    setPresenting(false);
+    syncProjector();
+  }
+  const [projectorOpen, syncProjector] = useProjectorOpen();
+  function stopPresenting() {
+    closeProjector();
+    syncProjector();
+  }
+
+
+  /** Selects a slide; when live, it goes to the screen first. */
+  const putUp = useCallback((id: string, slide: number) => {
+    const song = songById(id);
+    if (!song) return;
+    const i = Math.max(0, Math.min(slide, song.slides.length - 1));
+    if (liveRef.current) void screen.current?.show(toSlide(song, i));
+    const next = { id, slide: i };
+    currentRef.current = next;
+    setCurrent(next);
+  }, [songById]);
+
+  const goLive = useCallback((on: boolean) => {
+    liveRef.current = on;
+    setIsLive(on);
+    const cur = currentRef.current;
+    const song = cur ? songById(cur.id) : null;
+    void screen.current?.show(on && song && cur ? toSlide(song, cur.slide) : null);
+  }, [songById]);
+
+  const step = useCallback(
+    (dir: 1 | -1) => {
+      const cur = currentRef.current;
+      if (cur) putUp(cur.id, cur.slide + dir);
+    },
+    [putUp],
+  );
+
+  // ---- Following the singing -----------------------------------------------
+  const [auto, setAuto] = useState(true);
+  const autoRef = useRef(auto);
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(AUTO_KEY);
+      if (saved !== null) setAuto(saved === "1");
+    } catch {}
+  }, []);
+  useEffect(() => {
+    autoRef.current = auto;
+    try {
+      localStorage.setItem(AUTO_KEY, auto ? "1" : "0");
+    } catch {}
+  }, [auto]);
+
+  const indexRef = useRef(index);
+  const setIndexRef = useRef(setIndex);
+  useEffect(() => {
+    indexRef.current = index;
+    setIndexRef.current = setIndex;
+  }, [index, setIndex]);
+  const sung = useRef(""); // the last finished lines, kept short
+  const lastCandidate = useRef("");
+  const [heard, setHeard] = useState("");
+  const [suggestion, setSuggestion] = useState<(SongMatch & { id: string }) | null>(null);
+
+  const onText = useCallback(
+    (text: string, final: boolean) => {
+      const recent = `${sung.current} ${text}`.trim();
+      if (final) sung.current = recent.split(/\s+/).slice(-24).join(" ");
+      setHeard(recent.split(/\s+/).slice(-14).join(" "));
+      const cur = currentRef.current;
+      const pick = (idx: SongIndex | null) => {
+        if (!idx) return null;
+        const pos = cur ? idx.songs.findIndex((s) => s.id === cur.id) : -1;
+        const r = idx.match(recent, cur && pos >= 0 ? { song: pos, slide: cur.slide } : null);
+        return r ? { ...r, id: idx.songs[r.song].id } : null;
+      };
+      // The setlist first. The whole library only suggests while a setlist
+      // is chosen: a song nobody planned never jumps onto the screen.
+      const inSet = setIndexRef.current;
+      let m = pick(inSet);
+      if (!m?.confident) {
+        const all = pick(indexRef.current);
+        if (all && (!m || all.score > m.score)) m = inSet ? { ...all, confident: false } : all;
+      }
+      if (!m) return;
+      const id = m.id;
+      if (!m.confident || !autoRef.current) {
+        setSuggestion({ ...m, id });
+        return;
+      }
+      setSuggestion(null);
+      // Move only when the same slide wins twice in a row (or the line is
+      // finished), so a half-heard phrase doesn't flick the screen.
+      const key = `${id}:${m.slide}`;
+      const settled = final || lastCandidate.current === key;
+      lastCandidate.current = key;
+      if (settled && (cur?.id !== id || cur.slide !== m.slide)) putUp(id, m.slide);
+    },
+    [putUp],
+  );
+
+  // Hints for the transcriber: the setlist's songs, or with no setlist the
+  // song that's open. Read when Start worship is pressed.
+  const hintSongs = useRef<FullSong[]>([]);
+  useEffect(() => {
+    const ids = activeSetlist?.song_ids.length ? activeSetlist.song_ids : current ? [current.id] : [];
+    hintSongs.current = ids.map((id) => songs?.[byId.get(id) ?? -1]).filter((s): s is FullSong => !!s);
+  }, [activeSetlist, current, songs, byId]);
+  const session = useCallback(() => ({ mode: "worship" as const, keyterms: songKeyterms(hintSongs.current) }), []);
+
+  const live = useLiveService({ churchId, userId, bible: null, silenceEndMinutes, onText, session });
+  useEffect(() => {
+    if (live.phase === "idle") {
+      sung.current = "";
+      setHeard("");
+      setSuggestion(null);
+    }
+  }, [live.phase]);
+
+  // ---- Keyboard ------------------------------------------------------------
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement;
+      if (t.closest("input, textarea, [role=listbox], [contenteditable=true]") || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.key === "ArrowRight" || e.key === "PageDown" || e.key === " ") {
+        e.preventDefault();
+        step(1);
+      } else if (e.key === "ArrowLeft" || e.key === "PageUp") {
+        e.preventDefault();
+        step(-1);
+      } else if (e.key === "l" || e.key === "L") goLive(!liveRef.current);
+      else if (e.key === "Escape") goLive(false);
+      else if (e.key === "a" || e.key === "A") setAuto((v) => !v);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [step, goLive]);
+
+  // ---- Library and editing --------------------------------------------------
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<LibraryFilter>("all");
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(FILTER_KEY) as LibraryFilter | null;
+      if (saved && FILTERS.some((f) => f.value === saved)) setFilter(saved);
+    } catch {}
+  }, []);
+  const chooseFilter = useCallback((v: string) => {
+    setFilter(v as LibraryFilter);
+    try {
+      localStorage.setItem(FILTER_KEY, v);
+    } catch {}
+  }, []);
+  const inFilter = useMemo(
+    () =>
+      filter === "all"
+        ? library
+        : library.filter((s) => !s.shared),
+    [library, filter],
+  );
+  const [editing, setEditing] = useState<FullSong | "new" | null>(null);
+  /** Songs added while another was being presented, waiting their turn. */
+  const [queue, setQueue] = useState<string[]>([]);
+  const folded = useMemo(() => {
+    const words = new Map((songs ?? []).map((s) => [s.id, fold(songBody(s.slides))]));
+    return inFilter.map((s) => ({ s, key: fold(`${s.title} ${s.author} ${s.firstLine}`), words: words.get(s.id) ?? "" }));
+  }, [inFilter, songs]);
+  const matches = useMemo(() => {
+    const q = fold(query.trim());
+    if (!q) return inFilter;
+    return folded.filter(({ key, words }) => key.includes(q) || (q.length >= 3 && words.includes(q))).map(({ s }) => s);
+  }, [folded, inFilter, query]);
+
+  async function save(fields: SongFields, existing: FullSong | null): Promise<string | void> {
+    const row = { ...fields, body: songBody(fields.slides), first_line: firstLine(fields.slides), updated_at: new Date().toISOString() };
+    const supabase = supabaseBrowser();
+    const { data, error } = existing
+      ? await supabase.from("songs").update(row).eq("id", existing.id).select("id").single()
+      : await supabase.from("songs").insert({ ...row, church_id: churchId, created_by: userId, source: "manual" }).select("id").single();
+    if (error || !data) return error?.message ?? "Could not save the song.";
+    setEditing(null);
+    const id = data.id as string;
+
+    // Into the console's songs straight away, not after a reload of them all.
+    const saved: FullSong = { id, ...fields, shared: false };
+    setSongs((list) => (list ? [...list.filter((s) => s.id !== id), saved].sort((a, b) => a.title.localeCompare(b.title)) : list));
+    router.refresh(); // the library list beside it
+
+    if (existing) return; // an edit: whatever was open stays open, now with the new words
+    // A new song opens at once, unless one is being presented: then it waits
+    // in Up next rather than interrupt.
+    const presenting = liveRef.current && currentRef.current !== null;
+    if (presenting) setQueue((q) => (q.includes(id) ? q : [...q, id]));
+    else {
+      currentRef.current = { id, slide: 0 };
+      setCurrent({ id, slide: 0 });
+    }
+  }
+
+  /** Opens a song from Up next. */
+  function openQueued(id: string) {
+    setQueue((q) => q.filter((x) => x !== id));
+    setEditing(null);
+    currentRef.current = { id, slide: 0 };
+    setCurrent({ id, slide: 0 });
+  }
+
+  async function remove(song: FullSong) {
+    const ok = await confirmDialog({
+      title: `Delete "${song.title}"?`,
+      body: "It's removed from your church's songs. This can't be undone.",
+      confirmLabel: "Delete",
+      danger: true,
+    });
+    if (!ok) return;
+    await supabaseBrowser().from("songs").delete().eq("id", song.id);
+    if (currentRef.current?.id === song.id) {
+      currentRef.current = null;
+      setCurrent(null);
+    }
+    setSongs((list) => list?.filter((s) => s.id !== song.id) ?? list);
+    setQueue((q) => q.filter((x) => x !== song.id));
+    router.refresh();
+  }
+
+  const onAir = isLive ? selectedSlide : null;
+  const suggested = suggestion && songs ? songs[byId.get(suggestion.id) ?? -1] : null;
+
+  return (
+    <div className="flex flex-col gap-2 px-2 pb-2 lg:grid lg:h-[calc(100dvh-4rem)] lg:min-h-[520px] lg:grid-cols-[minmax(0,1fr)_minmax(320px,400px)]">
+      <div className="flex min-h-0 flex-col gap-2">
+        {/* Controls */}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-lg bg-surface px-4 py-3">
+          <label className="flex min-w-0 items-center gap-2.5">
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-surface-2 text-muted">
+              <Mic size={17} />
+            </span>
+            <span className="sr-only">Audio input</span>
+            <Dropdown
+              ariaLabel="Audio input"
+              value={live.deviceId}
+              onChange={live.setDeviceId}
+              disabled={live.phase !== "idle"}
+              placeholder="No inputs found"
+              options={live.inputs.map((d) => ({ value: d.deviceId, label: d.label }))}
+              className="h-9 w-64 max-w-full text-sm font-semibold"
+            />
+          </label>
+          <LevelMeter levelRef={live.levelRef} active={live.phase === "live" || live.testing} />
+          {live.phase === "idle" && (
+            <Button variant={live.testing ? "secondary" : "outline"} size="sm" onClick={() => void live.toggleTest()}>
+              {live.testing ? <Square size={11} className="fill-current" /> : <Mic size={13} />}
+              {live.testing ? "Stop test" : "Test mic"}
+            </Button>
+          )}
+          <div className="ml-auto flex items-center gap-3">
+            <button
+              type="button"
+              role="switch"
+              aria-checked={auto}
+              onClick={() => setAuto((v) => !v)}
+              title={auto ? "Follow on: the screen follows the singing (A)" : "Follow off: the singing only suggests slides (A)"}
+              className={`inline-flex h-9 items-center gap-2 rounded-full pr-2 pl-3.5 text-sm font-bold transition ${auto ? "bg-accent-fill/15 text-accent" : "bg-surface-2 text-muted hover:text-ink"}`}
+            >
+              <Zap size={15} className={auto ? "fill-current" : ""} />
+              Follow
+              <span className={`relative h-5 w-9 rounded-full transition ${auto ? "bg-accent-fill" : "bg-surface-3"}`}>
+                <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all ${auto ? "left-[18px]" : "left-0.5"}`} />
+              </span>
+            </button>
+            {live.phase === "live" &&
+              (live.status === "live" ? (
+                <Chip tone="live">
+                  <span className="h-2 w-2 animate-pulse rounded-full bg-negative" /> Listening
+                </Chip>
+              ) : (
+                <Chip tone="warn">
+                  <WifiOff size={13} /> Reconnecting
+                </Chip>
+              ))}
+            {(live.phase === "idle" || live.phase === "starting") && (
+              <Button
+                onClick={live.start}
+                loading={live.phase === "starting"}
+                disabled={!songs}
+                title="Listen to the singing and follow it on screen. Songs can be shown by hand without this."
+              >
+                {live.phase !== "starting" && <AudioLines size={15} />}
+                {live.phase === "starting" ? "Connecting" : songs ? "Start worship" : "Loading songs"}
+              </Button>
+            )}
+          </div>
+        </div>
+
+        {(live.error || loadError) && <div className="rounded-lg bg-warning/12 px-4 py-2.5 text-sm font-semibold text-warning">{live.error || loadError}</div>}
+
+        <EndServiceButton live={live} label="End worship" confirmTitle="End worship?" confirmBody="Listening stops. What's on the screen stays until you change it." />
+        {/* Always usable by hand: listening only adds following the singing. */}
+        <div className="grid min-h-0 flex-1 gap-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
+          {/* The song */}
+          <section className="flex min-h-[320px] flex-col overflow-hidden rounded-lg bg-surface lg:min-h-0">
+            <>
+                <div className="flex h-14 shrink-0 items-center gap-2 px-4">
+                  <h2 className="min-w-0 flex-1 truncate font-bold">{currentSong?.title ?? "Song"}</h2>
+                  {currentSong && !currentSong.shared && (
+                    <>
+                      <IconButton label="Edit song" onClick={() => setEditing(currentSong)}>
+                        <Pencil size={15} />
+                      </IconButton>
+                      <IconButton label="Delete song" onClick={() => void remove(currentSong)} className="hover:text-negative">
+                        <Trash2 size={15} />
+                      </IconButton>
+                    </>
+                  )}
+                  {currentSong?.shared && <Chip>Shared</Chip>}
+                </div>
+
+                {/* Up next: songs added while another was on screen. */}
+                {queue.length > 0 && (
+                  <div className="mx-3 mb-2 flex flex-wrap items-center gap-1.5 rounded-lg bg-surface-2 px-2.5 py-2">
+                    <span className="mr-1 text-[11px] font-bold tracking-wider text-faint uppercase">Up next</span>
+                    {queue.map((id) => (
+                      <span key={id} className="inline-flex items-center rounded-full bg-surface-3 pl-3 text-sm font-semibold">
+                        <button type="button" onClick={() => openQueued(id)} className="max-w-56 truncate py-1 hover:underline" title="Open this song">
+                          {titles.get(id) ?? songs?.find((s) => s.id === id)?.title ?? "New song"}
+                        </button>
+                        <IconButton label="Remove from Up next" onClick={() => setQueue((q) => q.filter((x) => x !== id))} className="h-7 w-7 hover:bg-ink/10!">
+                          <X size={13} />
+                        </IconButton>
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {/* Heard, but not sure enough (or Follow is off): one click puts it up. */}
+                {suggested && suggestion && (current?.id !== suggestion.id || current.slide !== suggestion.slide) && (
+                  <button
+                    type="button"
+                    onClick={() => putUp(suggestion.id, suggestion.slide)}
+                    className="mx-3 mb-2 flex items-center gap-3 rounded-lg bg-accent-fill/10 px-3 py-2 text-left text-sm transition hover:bg-accent-fill/20"
+                  >
+                    <AudioLines size={16} className="shrink-0 text-accent" />
+                    <span className="min-w-0 flex-1 truncate">
+                      Sounds like <b>{suggested.title}</b>, slide {suggestion.slide + 1}
+                    </span>
+                    <span className="text-xs font-bold text-accent">Show</span>
+                  </button>
+                )}
+
+                {currentSong ? (
+                  <SlideGrid
+                    song={currentSong}
+                    edited={edits[currentSong.id]}
+                    active={current?.slide ?? -1}
+                    onAir={!!onAir}
+                    onPick={(i) => putUp(currentSong.id, i)}
+                    onEdit={(i, text) => editSlide(currentSong.id, i, text)}
+                  />
+                ) : (
+                  <div className="grid flex-1 place-items-center px-6 text-center">
+                    <div>
+                      <span className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-surface-2 text-muted">
+                        <Music size={24} />
+                      </span>
+                      <p className="mt-4 font-bold">{live.phase === "live" ? "Listening for a song" : "No song yet"}</p>
+                      <p className="mt-0.5 max-w-xs text-sm text-muted">
+                        {live.phase === "live" ? "It appears here as soon as a line is recognised." : "Pick one from the library, or start worship and let it follow the singing."}
+                      </p>
+                    </div>
+                  </div>
+                )}
+                {live.phase === "live" && heard && <p className="shrink-0 truncate border-t border-line px-4 py-2 text-xs text-faint">Hearing: {heard}</p>}
+            </>
+          </section>
+
+          {/* On screen */}
+          <section className="flex min-h-0 flex-col rounded-lg bg-surface">
+            <div className="flex h-14 shrink-0 items-center gap-3 px-4">
+              <h2 className="font-bold">On screen</h2>
+              {isLive ? (
+                <span className="inline-flex items-center gap-1.5 text-xs font-bold text-negative">
+                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-negative" /> Live
+                </span>
+              ) : (
+                <span className="text-xs font-bold text-faint">Not live · screen blank</span>
+              )}
+              <button
+                type="button"
+                role="switch"
+                aria-checked={isLive}
+                onClick={() => goLive(!isLive)}
+                className="ml-auto inline-flex h-9 items-center gap-2 rounded-full bg-surface-2 pr-2 pl-3 text-sm font-semibold transition hover:bg-surface-3"
+              >
+                Live
+                <Kbd>L</Kbd>
+                <span className={`relative h-5 w-9 rounded-full transition ${isLive ? "bg-negative" : "bg-surface-3 ring-1 ring-line-strong"}`}>
+                  <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all ${isLive ? "left-[18px]" : "left-0.5"}`} />
+                </span>
+              </button>
+            </div>
+            <div className="flex min-h-0 flex-1 flex-col px-4 pb-4">
+              <div className="flex h-[60vw] items-center justify-center [container-type:size] lg:h-auto lg:min-h-[150px] lg:flex-1">
+                <div className="flex w-[min(100cqw,calc((100cqh-50px)*16/9))] flex-col gap-2.5">
+                  <div className={`relative aspect-video w-full overflow-hidden rounded-lg shadow-pop ${onAir ? "ring-2 ring-negative" : "ring-1 ring-line"}`}>
+                    <SlideView slide={selectedSlide} theme={display.songs} />
+                    {!selectedSlide && <span className="absolute inset-0 grid place-items-center text-xs font-semibold text-white/30">Screen is clear</span>}
+                  </div>
+                  <div className="flex shrink-0 flex-wrap items-center gap-2">
+                    <div className="inline-flex h-10 items-center rounded-full bg-surface-2 p-0.5">
+                      <IconButton label="Previous slide (←)" onClick={() => step(-1)} disabled={!current} className="h-9 w-9 text-ink hover:bg-surface-3">
+                        <ChevronLeft size={18} />
+                      </IconButton>
+                      <span className={`min-w-20 px-2 text-center text-sm font-bold tabular-nums ${current ? "text-ink" : "text-faint"}`}>
+                        {currentSong && current ? `${current.slide + 1} / ${currentSong.slides.length}` : "No slide"}
+                      </span>
+                      <IconButton label="Next slide (→ or Space)" onClick={() => step(1)} disabled={!current} className="h-9 w-9 text-ink hover:bg-surface-3">
+                        <ChevronRight size={18} />
+                      </IconButton>
+                    </div>
+                    {outputUrl && (
+                      <div className="ml-auto flex items-center gap-1">
+                        <a
+                          href={outputUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          aria-label="Open the output page in a new tab"
+                          className="grid h-10 w-10 place-items-center rounded-full text-muted transition hover:bg-surface-2 hover:text-ink"
+                        >
+                          <ExternalLink size={16} />
+                        </a>
+                        {projectorOpen ? (
+                          <Button size="sm" variant="secondary" className="h-10" onClick={stopPresenting} title="Close the projector window">
+                            <MonitorOff size={14} /> Stop presenting
+                          </Button>
+                        ) : (
+                          <Button size="sm" className="h-10" loading={presenting} onClick={present}>
+                            <MonitorUp size={14} /> Present
+                          </Button>
+                        )}
+                        {canEditDisplay && <DisplayQuick churchId={churchId} kind="songs" display={display} onChange={setDisplay} />}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      {/* Library, or the song form in its place. Outside the start panel, so
+          songs can be added and edited before worship starts. */}
+      {editing ? (
+        <aside className="flex min-h-[460px] flex-col overflow-hidden rounded-lg bg-surface lg:min-h-0">
+          <SongEditor
+            key={editing === "new" ? "new" : editing.id}
+            initial={editing === "new" ? null : editing}
+            heading={editing === "new" ? "Add a song" : "Edit song"}
+            onCancel={() => setEditing(null)}
+            onSave={(f) => save(f, editing === "new" ? null : editing)}
+          />
+        </aside>
+      ) : (
+        <aside className="flex min-h-[460px] flex-col gap-3 rounded-lg bg-surface p-3 lg:min-h-0">
+          <div className="flex items-center gap-2 px-1 pt-1">
+            <h2 className="sr-only">Songs</h2>
+            <Dropdown
+              ariaLabel="Which songs"
+              value={filter}
+              onChange={chooseFilter}
+              options={FILTERS.map((f) => ({ value: f.value, label: f.label }))}
+              className="h-9 w-48 text-sm font-bold"
+            />
+            <span className="text-sm text-muted tabular-nums">{inFilter.length.toLocaleString()}</span>
+            {!songs && !loadError && <LoaderCircle size={14} className="animate-spin text-faint" />}
+            <Button size="sm" variant="secondary" className="ml-auto" onClick={() => setEditing("new")}>
+              <Plus size={13} /> Add song
+            </Button>
+          </div>
+          <SetlistPanel
+            setlists={setlists}
+            activeId={setlistId}
+            titles={titles}
+            currentSongId={current?.id ?? null}
+            onSelect={chooseSetlist}
+            onCreate={createSetlist}
+            onRename={(id, name) => void saveSetlist(id, { name })}
+            onDelete={deleteSetlist}
+            onChange={(id, song_ids) => void saveSetlist(id, { song_ids })}
+            onOpen={(id) => {
+              setEditing(null);
+              currentRef.current = { id, slide: 0 };
+              setCurrent({ id, slide: 0 });
+            }}
+          />
+          <label className="relative block">
+            <span className="sr-only">Search songs</span>
+            <Search size={16} className="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 text-faint" />
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search titles and lyrics"
+              className="inset-field h-10 w-full rounded-full bg-surface-2 pr-4 pl-10 text-sm placeholder:text-faint"
+            />
+          </label>
+          <ol className="min-h-0 flex-1 overflow-y-auto">
+            {matches.slice(0, SHOWN).map((s) => (
+              <LibraryRow
+                key={s.id}
+                song={s}
+                active={s.id === current?.id}
+                inSetlist={!!activeSetlist?.song_ids.includes(s.id)}
+                onAdd={activeSetlist ? addToSetlist : undefined}
+                onOpen={() => {
+                  setEditing(null);
+                  currentRef.current = { id: s.id, slide: 0 };
+                  setCurrent({ id: s.id, slide: 0 });
+                }}
+              />
+            ))}
+            {matches.length > SHOWN && <li className="px-3 py-3 text-center text-xs text-muted">{(matches.length - SHOWN).toLocaleString()} more. Search to narrow the list.</li>}
+            {inFilter.length > 0 && matches.length === 0 && <li className="px-3 py-8 text-center text-sm text-muted">No songs match.</li>}
+            {inFilter.length === 0 && (
+              <li className="px-4 py-10 text-center">
+                <p className="text-sm text-muted">{FILTERS.find((f) => f.value === filter)?.empty}</p>
+                <Button size="sm" variant="secondary" className="mt-4" onClick={() => setEditing("new")}>
+                  <Plus size={13} /> Add song
+                </Button>
+              </li>
+            )}
+          </ol>
+        </aside>
+      )}
+    </div>
+  );
+}
+
+const LibraryRow = memo(function LibraryRow({
+  song,
+  active,
+  inSetlist,
+  onAdd,
+  onOpen,
+}: {
+  song: LibrarySong;
+  active: boolean;
+  inSetlist: boolean;
+  /** Present while a setlist is chosen. */
+  onAdd?: (id: string) => void;
+  onOpen: () => void;
+}) {
+  return (
+    <li className={`group flex items-center rounded-md transition ${active ? "bg-surface-3" : "hover:bg-surface-2"}`}>
+      <button type="button" onClick={onOpen} className="block min-w-0 flex-1 px-3 py-2 text-left">
+        <span className="flex items-center gap-2">
+          <span className="min-w-0 flex-1 truncate text-[15px] font-semibold">{song.title}</span>
+          {!song.shared && <span className="shrink-0 text-[10px] font-bold tracking-wider text-accent uppercase">Ours</span>}
+        </span>
+        <span className="block truncate text-xs text-muted">{song.firstLine || song.author || " "}</span>
+      </button>
+      {onAdd &&
+        (inSetlist ? (
+          <span className="mr-2 shrink-0 text-[10px] font-bold tracking-wider text-faint uppercase">In playlist</span>
+        ) : (
+          <IconButton label="Add to playlist" onClick={() => onAdd(song.id)} className="mr-1 h-8 w-8 opacity-60 group-hover:opacity-100">
+            <Plus size={16} />
+          </IconButton>
+        ))}
+    </li>
+  );
+});
+
+const SlideGrid = memo(function SlideGrid({
+  song,
+  edited,
+  active,
+  onAir,
+  onPick,
+  onEdit,
+}: {
+  song: FullSong;
+  /** Slides changed for this service: index → words. */
+  edited?: Record<number, string>;
+  active: number;
+  onAir: boolean;
+  onPick: (i: number) => void;
+  /** New words for a slide, or null to put the original back. */
+  onEdit: (i: number, text: string | null) => void;
+}) {
+  const list = useRef<HTMLOListElement>(null);
+  const [editing, setEditing] = useState<{ i: number; text: string } | null>(null);
+  useEffect(() => {
+    list.current?.querySelector<HTMLElement>(`[data-slide="${active}"]`)?.scrollIntoView({ block: "nearest" });
+  }, [active, song.id]);
+  useEffect(() => setEditing(null), [song.id]);
+
+  const finish = () => {
+    if (!editing) return;
+    const text = editing.text.replace(/\n{3,}/g, "\n\n").trim();
+    if (text) onEdit(editing.i, text);
+    setEditing(null);
+  };
+
+  return (
+    <ol ref={list} className="grid min-h-0 flex-1 auto-rows-min grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-2 overflow-y-auto px-3 pb-3">
+      {song.slides.map((s, i) => {
+        const changed = edited?.[i] !== undefined;
+        const tone =
+          i === active
+            ? onAir
+              ? "bg-negative/10 shadow-[inset_0_0_0_2px_var(--color-negative)]"
+              : "bg-accent-fill/15 shadow-[inset_0_0_0_1px_var(--accent-fill)]"
+            : "bg-surface-2 hover:bg-surface-3";
+        if (editing?.i === i) {
+          return (
+            <li key={i} className="flex flex-col gap-2 rounded-lg bg-surface-2 p-2 shadow-[inset_0_0_0_1px_var(--accent-fill)]">
+              <span className="px-1 text-[11px] font-bold text-faint">{i + 1} · editing for today</span>
+              <textarea
+                autoFocus
+                value={editing.text}
+                onChange={(e) => setEditing({ i, text: e.target.value })}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setEditing(null);
+                  } else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                    e.preventDefault();
+                    finish();
+                  }
+                }}
+                rows={Math.max(2, editing.text.split("\n").length)}
+                className="inset-field w-full resize-y rounded-md bg-bg px-2.5 py-2 text-sm leading-snug"
+              />
+              <span className="flex gap-1.5">
+                <Button size="sm" onClick={finish}>
+                  Done
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setEditing(null)}>
+                  Cancel
+                </Button>
+              </span>
+            </li>
+          );
+        }
+        return (
+          <li key={i} className="group relative">
+            <button type="button" data-slide={i} onClick={() => onPick(i)} className={`flex h-full w-full flex-col rounded-lg p-3 text-left transition ${tone}`}>
+              <span className="mb-1 flex items-center gap-2 pr-14 text-[11px] font-bold text-faint">
+                {i + 1}
+                {s.label && <span className={s.label === "Chorus" ? "text-accent" : ""}>{s.label}</span>}
+                {changed && <span className="text-warning">Edited</span>}
+              </span>
+              <span className="text-sm leading-snug whitespace-pre-line">{s.text}</span>
+            </button>
+            {/* For today only: the library keeps its words. */}
+            <span className="absolute top-1.5 right-1.5 flex gap-0.5 opacity-0 transition group-hover:opacity-100 focus-within:opacity-100">
+              {changed && (
+                <IconButton label="Put the original words back" onClick={() => onEdit(i, null)} className="h-7 w-7 hover:bg-ink/10!">
+                  <Undo2 size={14} />
+                </IconButton>
+              )}
+              <IconButton label="Change the words for today" onClick={() => setEditing({ i, text: s.text })} className="h-7 w-7 hover:bg-ink/10!">
+                <Pencil size={13} />
+              </IconButton>
+            </span>
+          </li>
+        );
+      })}
+    </ol>
+  );
+});

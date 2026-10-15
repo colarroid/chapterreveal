@@ -1,0 +1,197 @@
+import fs from "node:fs";
+import path from "node:path";
+import { describe, expect, it } from "vitest";
+import { buildSlides, shapeOf, stepVerse, type Translation } from "./bible";
+import { detect, formatRef, parseSearch, type ParseContext } from "./parser";
+import { tokenize } from "./tokenize";
+
+const kjv: Translation = JSON.parse(fs.readFileSync(path.join(__dirname, "../../../public/bibles/kjv.json"), "utf8"));
+const bible = shapeOf(kjv);
+
+/** Formatted references found in text. */
+const refs = (text: string, ctx?: ParseContext) => detect(text, bible, ctx).detections.map((d) => formatRef(d.ref));
+
+describe("tokenize", () => {
+  it("folds spoken numbers", () => {
+    const nums = (s: string) => tokenize(s).filter((t) => t.num !== undefined).map((t) => t.num);
+    expect(nums("three sixteen")).toEqual([3, 16]);
+    expect(nums("twenty three")).toEqual([23]);
+    expect(nums("twenty-one")).toEqual([21]);
+    expect(nums("one hundred and nineteen")).toEqual([119]);
+    expect(nums("one hundred and five and six")).toEqual([105, 6]);
+    expect(nums("a hundred")).toEqual([100]);
+  });
+});
+
+describe("explicit references", () => {
+  it.each([
+    ["Turn with me to John 3:16.", "John 3:16"],
+    ["John chapter three verse sixteen", "John 3:16"],
+    ["John three sixteen", "John 3:16"],
+    ["John chapter 3 and verse 16", "John 3:16"],
+    ["Romans 8:28", "Romans 8:28"],
+    ["Romans eight twenty eight", "Romans 8:28"],
+    ["Psalm twenty three", "Psalm 23"],
+    ["Psalms 23 verse 1", "Psalm 23:1"],
+    ["Psalm one hundred and nineteen verse one hundred and five", "Psalm 119:105"],
+    ["Psalm one nineteen", "Psalm 119"],
+    ["first Corinthians thirteen verse four", "1 Corinthians 13:4"],
+    ["1st Corinthians 13:4", "1 Corinthians 13:4"],
+    ["second Timothy one seven", "2 Timothy 1:7"],
+    ["first John one nine", "1 John 1:9"],
+    ["third John verse two", "3 John 1:2"],
+    ["Song of Solomon chapter two verse four", "Song of Solomon 2:4"],
+    ["Jude 24", "Jude 1:24"],
+    ["Philemon verse six", "Philemon 1:6"],
+    ["Acts of the Apostles 2:38", "Acts 2:38"],
+    ["Revelations 21 4", "Revelation 21:4"],
+    ["Saint John 14 6", "John 14:6"],
+    ["the book of Isaiah chapter 40 verse 31", "Isaiah 40:31"],
+    ["Mathew 6:33", "Matthew 6:33"],
+    ["John 316", "John 3:16"],
+  ])("%s", (text, want) => {
+    expect(refs(text)).toEqual([want]);
+  });
+
+  it("reads ranges", () => {
+    expect(refs("John 3 verses 16 to 18")).toEqual(["John 3:16-18"]);
+    expect(refs("John 3:16-18")).toEqual(["John 3:16-18"]);
+    expect(refs("Matthew 5 verse 3 to verse 12")).toEqual(["Matthew 5:3-12"]);
+    expect(refs("Isaiah 53 verses 4 through 6")).toEqual(["Isaiah 53:4-6"]);
+  });
+
+  it("reads lists", () => {
+    expect(refs("Proverbs 3, 5 and 6")).toEqual(["Proverbs 3:5-6"]);
+    expect(refs("Romans 8 verses 1 and 28")).toEqual(["Romans 8:1", "Romans 8:28"]);
+  });
+
+  it("finds several references in one sentence", () => {
+    expect(refs("Look at Romans 8:28 and also 2 Corinthians 5:17")).toEqual(["Romans 8:28", "2 Corinthians 5:17"]);
+    expect(refs("Romans 8, 2 Corinthians 5")).toEqual(["Romans 8", "2 Corinthians 5"]);
+  });
+
+  it("ignores book names used as ordinary words", () => {
+    expect(refs("Mark my words, this is the job of every believer")).toEqual([]);
+    expect(refs("John said we should go")).toEqual([]);
+    expect(refs("these acts of kindness")).toEqual([]);
+  });
+
+  it("drops chapters and verses that do not exist", () => {
+    expect(refs("Jude 3 chapter")).toEqual(["Jude 1:3"]);
+    expect(refs("Revelation 23")).toEqual([]);
+    // Digits the transcriber glued together are split when only that reading exists.
+    expect(refs("Psalm 151")).toEqual(["Psalm 15:1"]);
+    expect(refs("Romans 99")).toEqual([]);
+    // John 3 has 36 verses: keep the chapter, drop the impossible verse.
+    expect(refs("John 3:40")).toEqual(["John 3"]);
+  });
+
+  it("scores clear citations above loose ones", () => {
+    const c = (t: string) => detect(t, bible).detections[0].confidence;
+    expect(c("John 3:16")).toBeGreaterThan(c("John 3 16"));
+    expect(c("Romans 8 28")).toBeGreaterThan(c("John 3"));
+    expect(c("Numbers 6 24")).toBeLessThan(c("John 3 16"));
+    expect(c("Romans 8:28")).toBeGreaterThan(c("Romans 8"));
+  });
+
+  it("reports where the reference sits in the text", () => {
+    const text = "Turn with me to Romans 8:28 please";
+    const d = detect(text, bible).detections[0];
+    expect(text.slice(d.start, d.end)).toBe("Romans 8:28");
+  });
+});
+
+describe("follow-ups", () => {
+  const afterJohn3 = detect("John 3:16", bible).context;
+
+  it("never gives a named book's impossible numbers to the book before it", () => {
+    // 2 Peter has three chapters. Heard in a real service after Mark 13:4.
+    const afterMark = detect("Mark chapter thirteen verse four", bible).context;
+    expect(refs("second Peter chapter four verse three and KJV", afterMark)).toEqual([]);
+    expect(refs("2 Peter 4:3", afterMark)).toEqual([]);
+  });
+
+  it("still follows on after a book is only mentioned in passing", () => {
+    expect(refs("as John said, verse 17", afterJohn3)).toEqual(["John 3:17"]);
+  });
+
+  it("resolves verse-only follow-ups to the current chapter", () => {
+    expect(refs("verse 17", afterJohn3)).toEqual(["John 3:17"]);
+    expect(refs("go down to verse 20", afterJohn3)).toEqual(["John 3:20"]);
+    expect(refs("the same chapter, verse 20", afterJohn3)).toEqual(["John 3:20"]);
+    expect(refs("verses 17 to 19", afterJohn3)).toEqual(["John 3:17-19"]);
+  });
+
+  it("resolves chapter follow-ups to the current book", () => {
+    expect(refs("chapter 4 verse 2", afterJohn3)).toEqual(["John 4:2"]);
+  });
+
+  it("follows within one piece of text", () => {
+    expect(refs("Romans 12 verse 1. Now verse 2 says")).toEqual(["Romans 12:1", "Romans 12:2"]);
+  });
+
+  it("needs a reference first", () => {
+    expect(refs("verse 17")).toEqual([]);
+  });
+
+  it("joins a book at the end of one segment to numbers at the start of the next", () => {
+    const first = detect("Please turn with me to Romans", bible);
+    expect(first.detections).toEqual([]);
+    expect(first.context.pendingBook).toBe(43 + 1);
+    expect(refs("chapter eight verse twenty eight", first.context)).toEqual(["Romans 8:28"]);
+    expect(refs("8:28", first.context)).toEqual(["Romans 8:28"]);
+  });
+});
+
+describe("manual search", () => {
+  const s = (q: string) => {
+    const r = parseSearch(q, bible);
+    return r ? formatRef(r) : null;
+  };
+  it.each([
+    ["Jn 3 16", "John 3:16"],
+    ["jn3:16", "John 3:16"],
+    ["1 cor 13:4-7", "1 Corinthians 13:4-7"],
+    ["1cor 13 4", "1 Corinthians 13:4"],
+    ["ps 23", "Psalm 23"],
+    ["gen 1 1", "Genesis 1:1"],
+    ["Prov 3:5, 6", "Proverbs 3:5-6"],
+    ["rev 22 21", "Revelation 22:21"],
+    ["ii kings 2 11", "2 Kings 2:11"],
+    ["romans", "Romans 1"],
+  ])("%s", (q, want) => {
+    expect(s(q)).toBe(want);
+  });
+  it("returns null for nonsense", () => {
+    expect(s("hello")).toBeNull();
+  });
+});
+
+describe("slides and stepping", () => {
+  it("keeps a short verse on one slide", () => {
+    const slides = buildSlides(kjv, { book: 42, chapter: 3, verseStart: 16, verseEnd: 16 });
+    expect(slides).toHaveLength(1);
+    expect(slides[0].label).toBe("John 3:16");
+  });
+
+  it("splits a long verse into labelled parts", () => {
+    // Esther 8:9 is the longest verse in the Bible.
+    const slides = buildSlides(kjv, { book: 16, chapter: 8, verseStart: 9, verseEnd: 9 });
+    expect(slides.length).toBeGreaterThan(1);
+    expect(slides[0].label).toBe(`Esther 8:9 (1/${slides.length})`);
+    expect(slides.map((s) => s.lines[0].text).join(" ")).toBe(kjv.books[16][7][8]);
+  });
+
+  it("groups a range into slides that each name their verses", () => {
+    const slides = buildSlides(kjv, { book: 18, chapter: 23, verseStart: 1, verseEnd: 6 });
+    expect(slides.length).toBeGreaterThan(1);
+    expect(slides[0].label.startsWith("Psalm 23:1")).toBe(true);
+    expect(slides.flatMap((s) => s.lines.map((l) => l.verse))).toEqual([1, 2, 3, 4, 5, 6]);
+  });
+
+  it("steps across chapter ends", () => {
+    expect(stepVerse(kjv, 42, 3, 36, 1)).toEqual({ book: 42, chapter: 4, verseStart: 1, verseEnd: 1 });
+    expect(stepVerse(kjv, 42, 4, 1, -1)).toEqual({ book: 42, chapter: 3, verseStart: 36, verseEnd: 36 });
+    expect(stepVerse(kjv, 0, 1, 1, -1)).toBeNull();
+  });
+});

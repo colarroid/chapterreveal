@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "scripture",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 3020
+    },
+    {
+      "name": "scripture-admin",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "../Scripture-Admin", "run", "dev"],
+      "port": 3021
+    }
+  ]
+}

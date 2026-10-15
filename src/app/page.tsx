@@ -1,0 +1,265 @@
+import { BookOpen, Cast, Check, ClipboardPaste, Globe, Languages, ListMusic, Music, PencilLine, Play, Sparkles } from "lucide-react";
+import Link from "next/link";
+import { redirect } from "next/navigation";
+import { Features } from "@/components/landing/features";
+import { AmbientFragments, TypedHeadline } from "@/components/landing/hero";
+import { ThemeToggle } from "@/components/theme";
+import { Logo } from "@/components/ui";
+import { APP_NAME } from "@/lib/brand";
+import { getSessionUser } from "@/lib/supabase/server";
+
+// Layout after terms.so: a tall gradient hero with a typed headline, product
+// cards that rise out of it, and a quiet footer. Colours stay Spotify: the
+// gradient runs from near-black through deep green into the brand green,
+// then melts into the page background, so it works in both themes.
+
+const HEADLINE = ["The verse they preach.", "The song they sing.", "On screen the moment", "it's spoken or sung."];
+
+// The two halves of a service, side by side under the hero.
+const SIDES = [
+  {
+    icon: BookOpen,
+    name: "Scripture",
+    lead: "For the sermon",
+    points: ["Picks every reference out of the sermon", "Switches translation when the preacher asks", "Search any verse and step through the chapter"],
+  },
+  {
+    icon: Music,
+    name: "Worship",
+    lead: "For praise and worship",
+    points: ["Follows the singing, line by line", "Playlists for the songs you've planned", "Paste lyrics from anywhere"],
+  },
+];
+
+const STEPS = [
+  { title: "Set up your church", body: "Create an account, name your church and invite your media team." },
+  { title: "Connect the sound", body: "Pick the sound desk feed, then open the output on your projector or livestream." },
+  { title: "Start the service", body: "Press Start and it follows the sermon and the singing. Or click anything to show it yourself." },
+];
+const FACTS = [
+  { icon: Globe, label: "Nothing to install" },
+  { icon: Cast, label: "Projector and livestream" },
+  { icon: Sparkles, label: "Free while we pilot" },
+];
+
+const HIGHLIGHTS = [
+  { icon: Languages, title: "Translations on request", body: "“In the King James” switches it, there and then." },
+  { icon: ListMusic, title: "Playlists", body: "Plan the set; it listens for those songs first." },
+  { icon: ClipboardPaste, title: "Paste any lyrics", body: "From Google or a lyrics site, split into clean slides." },
+  { icon: PencilLine, title: "Change words live", body: "Choir sings it differently? Edit the slide for today." },
+  { icon: Cast, title: "Projector and livestream", body: "One output page for the projector and vMix." },
+  { icon: Globe, title: "Nothing to install", body: "Runs in Chrome or Edge. Log in from any computer." },
+];
+
+const HERO_GRADIENT =
+  "linear-gradient(180deg, #050505 0%, #06110a 18%, #072014 34%, #0a3a1e 48%, #0f6330 60%, #17a64c 70%, #1ed760 76%, color-mix(in srgb, #1ed760 45%, var(--bg)) 84%, var(--bg) 100%)";
+
+export default async function Home() {
+  if (await getSessionUser()) redirect("/dashboard");
+
+  return (
+    <div className="min-h-dvh">
+      <section className="relative" style={{ background: HERO_GRADIENT }}>
+        <AmbientFragments />
+        <div className="relative mx-auto max-w-[60rem] px-5 sm:px-8">
+          {/* A floating pill that stays 24 px from the top while the page
+              scrolls, after gettakecontrol.app (964 × 54, 8/8/8/24 padding,
+              14 px semibold links, a dark pill button). */}
+          <header className="fixed inset-x-0 top-6 z-50 px-4 sm:px-6">
+            <div className="mx-auto flex h-[54px] max-w-[964px] items-center justify-between gap-6 rounded-full bg-bg py-2 pr-2 pl-5 shadow-[0_4px_7px_rgba(18,18,17,0.06)] ring-1 ring-line sm:pl-6">
+              <span className="sm:hidden">
+                <Logo compact />
+              </span>
+              <span className="hidden sm:block">
+                <Logo />
+              </span>
+              <nav className="flex items-center gap-0.5 text-sm leading-4 font-semibold tracking-[-0.14px] sm:gap-2">
+                <a href="#how" className="hidden h-[38px] items-center px-3 text-ink/75 transition hover:text-ink sm:flex">
+                  How it works
+                </a>
+                <Link href="/login" className="flex h-[38px] items-center px-2.5 text-ink/75 sm:px-3 transition hover:text-ink">
+                  Log in
+                </Link>
+                {/* The smallest phones have no room for it beside the buttons. */}
+                <ThemeToggle className="mx-1 max-[359px]:hidden" />
+                <Link href="/signup" className="flex h-[38px] items-center rounded-full bg-ink px-4 text-bg transition hover:opacity-85">
+                  Sign up
+                </Link>
+              </nav>
+            </div>
+          </header>
+
+          {/* Room for the floating header (24 px + 54 px) above the headline. */}
+          <div className="pt-36 pb-[19rem] sm:pt-44 sm:pb-[22rem]">
+            <TypedHeadline lines={HEADLINE} />
+            <p className="mt-6 max-w-xl text-lg leading-snug text-white/75 sm:text-xl">
+              {APP_NAME} listens to your service and puts scripture and song lyrics on the projector and livestream, so your media team never falls behind.
+            </p>
+            <div className="mt-9 flex flex-wrap gap-3">
+              <Link
+                href="/signup"
+                className="label-caps inline-flex h-12 items-center rounded-full bg-white px-7 text-xs text-black transition hover:scale-[1.03]"
+              >
+                Set up your church
+              </Link>
+              <a
+                href="#how"
+                className="label-caps inline-flex h-12 items-center gap-2 rounded-full bg-white/12 px-6 text-xs text-white backdrop-blur transition hover:bg-white/20"
+              >
+                <Play size={14} className="fill-current" /> See it work
+              </a>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="how" className="relative mx-auto -mt-[15rem] max-w-[60rem] scroll-mt-28 px-3 sm:-mt-[18rem] sm:px-8">
+        {/* Three steps, first out of the hero. Sizes and spacing taken from
+            gettakecontrol.app's steps section (964 px wide, 24 px padding,
+            32 px corners, 34 px numbers, a 148 px illustration slot, 18/22 and
+            16/20 text). The illustration slots stay empty until the artwork
+            is ready. */}
+        <div className="mx-auto mt-12 max-w-[964px] lg:-mx-[34px]">
+          <div className="ml-[27px] inline-flex items-center gap-2.5 rounded-t-2xl bg-surface px-4 py-2">
+            <span className="grid h-4 w-4 place-items-center rounded-[4px] bg-accent-fill text-on-accent">
+              <BookOpen size={10} strokeWidth={2} />
+            </span>
+            <p className="text-sm leading-4 font-semibold tracking-[-0.14px] text-muted">
+              Up and running in <strong className="font-semibold text-ink">3 steps</strong> :
+            </p>
+          </div>
+          <ol className="grid drop-shadow-[0_6px_6px_rgba(18,18,17,0.04)] md:grid-cols-3">
+            {STEPS.map(({ title, body }, i) => (
+              <li
+                key={title}
+                className="flex flex-col bg-bg p-6 first:rounded-t-[32px] last:rounded-b-[32px] not-first:border-t-[0.8px] not-first:border-line md:first:rounded-l-[32px] md:first:rounded-tr-none md:last:rounded-r-[32px] md:last:rounded-bl-none md:not-first:border-t-0 md:not-first:border-l-[0.8px]"
+              >
+                <span className="mb-1 grid h-[34px] w-[34px] place-items-center rounded-full bg-surface-2 text-lg font-semibold tabular-nums">{i + 1}</span>
+                {/* Illustration slot. */}
+                <div className="mb-4 h-28 md:h-[148px]" aria-hidden />
+                <h2 className="mb-3 text-lg leading-[22px] font-semibold tracking-[-0.18px]">{title}</h2>
+                <p className="text-base leading-5 font-medium text-muted">{body}</p>
+              </li>
+            ))}
+          </ol>
+          <ul className="mt-[34px] mb-28 flex flex-wrap justify-center gap-x-[30px] gap-y-3">
+            {FACTS.map(({ icon: Icon, label }) => (
+              <li key={label} className="inline-flex items-center gap-2 text-[15px] font-medium text-muted">
+                <Icon size={18} /> {label}
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        {/* One tool for the whole service. */}
+        <div className="mb-12 grid gap-3 sm:grid-cols-2">
+          {SIDES.map(({ icon: Icon, name, lead, points }) => (
+            // The media-desk frame: a page-coloured 6 px frame round a grey card.
+            <div key={name} className="rounded-3xl bg-bg p-1.5 shadow-[0_4px_30px_rgba(18,18,17,0.04)]">
+              <div className="h-full rounded-2xl bg-surface p-6 sm:p-7">
+              <div className="flex items-center gap-3">
+                <span className="grid h-11 w-11 place-items-center rounded-full bg-accent-fill text-on-accent">
+                  <Icon size={20} />
+                </span>
+                <div>
+                  <h2 className="text-xl leading-tight font-bold">{name}</h2>
+                  <p className="text-sm text-muted">{lead}</p>
+                </div>
+              </div>
+              <ul className="mt-5 space-y-2.5">
+                {points.map((p) => (
+                  <li key={p} className="flex gap-2.5 text-[15px] leading-snug">
+                    <Check size={17} className="mt-0.5 shrink-0 text-accent" />
+                    {p}
+                  </li>
+                ))}
+              </ul>
+              </div>
+            </div>
+          ))}
+        </div>
+        <Features />
+      </section>
+
+      {/* One rounded panel of soft tiles with hairline gaps, after
+          gettakecontrol.app's feature grid. */}
+      <section className="mx-auto max-w-[60rem] px-3 pt-48 sm:px-8">
+        <h2 className="mx-auto max-w-md text-center text-3xl leading-[1.15] font-medium tracking-[-0.02em] sm:text-[2.6rem]">
+          Made for the media desk.
+        </h2>
+        <p className="mx-auto mt-3 max-w-lg text-center text-lg text-muted">The small things that make Sunday calmer for the people at the back.</p>
+        <div className="mt-10 rounded-3xl bg-bg p-1.5 shadow-[0_4px_30px_rgba(18,18,17,0.04)]">
+          <div className="grid gap-1 overflow-hidden rounded-2xl sm:grid-cols-2 lg:grid-cols-3">
+            {HIGHLIGHTS.map(({ icon: Icon, title, body }) => (
+              <div key={title} className="flex flex-col gap-8 bg-surface p-6 transition-colors duration-200 hover:bg-surface-2">
+                <Icon size={19} className="text-ink" />
+                <div>
+                  <h3 className="text-lg leading-snug font-semibold">{title}</h3>
+                  <p className="mt-1.5 text-[15px] leading-snug text-muted">{body}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-[60rem] px-5 py-48 text-center sm:px-8">
+        <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">Ready for Sunday?</h2>
+        <p className="mx-auto mt-3 max-w-md text-lg text-muted">Setting up takes a few minutes. You need a computer with Chrome or Edge, the sound desk feed, and a projector.</p>
+        <Link
+          href="/signup"
+          className="label-caps mt-8 inline-flex h-12 items-center rounded-full bg-accent-fill px-8 text-xs text-on-accent transition hover:scale-[1.03]"
+        >
+          Set up your church
+        </Link>
+      </section>
+
+      <footer className="border-t border-line">
+        <div className="mx-auto grid max-w-[60rem] gap-10 px-5 py-12 grid-cols-2 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:gap-x-16 sm:px-8">
+          <div className="col-span-2 max-w-sm sm:col-span-1">
+            <Logo />
+            <p className="mt-4 text-sm text-muted">
+              {APP_NAME} listens to the sermon and the singing, and puts scripture and song lyrics on your projector and livestream. Free while we
+              pilot with churches.
+            </p>
+          </div>
+          <div>
+            <h2 className="text-sm font-bold">Product</h2>
+            <ul className="mt-3 space-y-2 text-sm text-muted">
+              <li>
+                <Link href="/signup" className="hover:text-ink">
+                  Sign up
+                </Link>
+              </li>
+              <li>
+                <Link href="/login" className="hover:text-ink">
+                  Log in
+                </Link>
+              </li>
+              <li>
+                <a href="#how" className="hover:text-ink">
+                  How it works
+                </a>
+              </li>
+            </ul>
+          </div>
+          <div>
+            <h2 className="text-sm font-bold">Legal</h2>
+            <ul className="mt-3 space-y-2 text-sm text-muted">
+              <li>
+                <Link href="/terms" className="hover:text-ink">
+                  Terms of Use
+                </Link>
+              </li>
+              <li>
+                <Link href="/privacy" className="hover:text-ink">
+                  Privacy Policy
+                </Link>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </footer>
+    </div>
+  );
+}

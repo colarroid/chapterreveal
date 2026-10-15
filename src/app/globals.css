@@ -1,0 +1,231 @@
+@import "tailwindcss";
+
+/*
+ * Design tokens, after Spotify's system: achromatic surfaces, one functional
+ * green, pill and circle geometry, heavy shadows for elevation.
+ * Light is the base; dark applies when the viewer picks it or, with no
+ * choice saved, when their system is dark. See src/components/theme.tsx.
+ */
+
+:root {
+  color-scheme: light;
+  --bg: #ffffff;
+  --surface: #f6f6f6;
+  --surface-2: #ededed;
+  --surface-3: #e3e3e3;
+  /* Raised menus (dropdowns): white with a shadow in light, Spotify's #282828 in dark. */
+  --menu: #ffffff;
+  --line: #e4e4e4;
+  --line-strong: #cdcdcd;
+  --ink: #121212;
+  --muted: #5e5e5e;
+  --faint: #8b8b8b;
+  /* Green fill (buttons, meters) and green text, which needs to be darker on white. */
+  --accent-fill: #1ed760;
+  --accent: #0e8a3e;
+  --on-accent: #000000;
+  --negative: #d43a4a;
+  --warning: #b56500;
+  --info: #2a6fd6;
+  --shadow-card: 0 8px 8px rgba(0, 0, 0, 0.06);
+  --shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.16);
+  --inset: 0 0 0 1px #cdcdcd inset;
+  --inset-focus: 0 0 0 2px #121212 inset;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #121212;
+  --surface: #181818;
+  --surface-2: #1f1f1f;
+  --surface-3: #2a2a2a;
+  --menu: #282828;
+  --line: #272727;
+  --line-strong: #3e3e3e;
+  --ink: #ffffff;
+  --muted: #b3b3b3;
+  --faint: #7c7c7c;
+  --accent-fill: #1ed760;
+  --accent: #1ed760;
+  --on-accent: #000000;
+  --negative: #f3727f;
+  --warning: #ffa42b;
+  --info: #539df5;
+  --shadow-card: 0 8px 8px rgba(0, 0, 0, 0.3);
+  --shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.5);
+  --inset: 0 1px 0 #121212, 0 0 0 1px #7c7c7c inset;
+  --inset-focus: 0 0 0 2px #ffffff inset;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #121212;
+    --surface: #181818;
+    --surface-2: #1f1f1f;
+    --surface-3: #2a2a2a;
+  --menu: #282828;
+    --line: #272727;
+    --line-strong: #3e3e3e;
+    --ink: #ffffff;
+    --muted: #b3b3b3;
+    --faint: #7c7c7c;
+    --accent-fill: #1ed760;
+    --accent: #1ed760;
+    --on-accent: #000000;
+    --negative: #f3727f;
+    --warning: #ffa42b;
+    --info: #539df5;
+    --shadow-card: 0 8px 8px rgba(0, 0, 0, 0.3);
+    --shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.5);
+    --inset: 0 1px 0 #121212, 0 0 0 1px #7c7c7c inset;
+    --inset-focus: 0 0 0 2px #ffffff inset;
+  }
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-menu: var(--menu);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-accent: var(--accent);
+  --color-accent-fill: var(--accent-fill);
+  --color-on-accent: var(--on-accent);
+  --color-negative: var(--negative);
+  --color-warning: var(--warning);
+  --color-info: var(--info);
+  --shadow-card: var(--shadow-card);
+  --shadow-pop: var(--shadow-pop);
+  --font-sans: var(--font-ui), "Helvetica Neue", helvetica, arial, sans-serif;
+  --font-serif: var(--font-serif-face), Georgia, serif;
+  --font-mono: var(--font-mono-face), ui-monospace, Menlo, Consolas, monospace;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-ui), "Helvetica Neue", helvetica, arial, sans-serif;
+}
+
+/* Lucide icons at 1.5 stroke everywhere, server-rendered ones included. */
+.lucide {
+  stroke-width: 1.5;
+}
+
+/* Spotify's label voice for buttons. */
+.label-caps {
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-weight: 700;
+}
+
+.inset-field {
+  box-shadow: var(--inset);
+}
+.inset-field:focus-within,
+.inset-field:focus {
+  box-shadow: var(--inset-focus);
+  outline: none;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--accent-fill) 35%, transparent);
+}
+
+/* Pixel-grid loader, after beautifului.dev. */
+@keyframes pixel {
+  0%,
+  100% {
+    opacity: 0.2;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+.pixel-grid > span {
+  animation: pixel 1.2s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+.text-shimmer {
+  background: linear-gradient(90deg, var(--muted) 0%, var(--ink) 50%, var(--muted) 100%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: shimmer 2.4s linear infinite;
+}
+
+/* Landing hero: preacher phrases typing themselves into the margins. */
+@keyframes fragment-type {
+  0% {
+    width: 0;
+    opacity: 0;
+  }
+  4% {
+    opacity: 1;
+  }
+  32% {
+    width: calc(var(--chars) * 1ch);
+  }
+  78% {
+    width: calc(var(--chars) * 1ch);
+    opacity: 1;
+  }
+  92%,
+  100% {
+    width: calc(var(--chars) * 1ch);
+    opacity: 0;
+  }
+}
+.ambient-fragment {
+  width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  animation: fragment-type 9s steps(28, end) infinite both;
+}
+
+/* Animated gradient backgrounds (Settings → Display). Slow on purpose: it
+   should feel alive without pulling eyes off the words. Not stopped by
+   reduced-motion: it's what the church chose to show, and projector PCs often
+   have Windows animations turned off. */
+@keyframes gradient-drift {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(-66.666%, 0, 0);
+  }
+}
+.animate-gradient-drift {
+  animation: gradient-drift 24s ease-in-out infinite alternate;
+  will-change: transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ambient-fragment {
+    animation: none;
+    width: auto;
+  }
+  .pixel-grid > span,
+  .text-shimmer {
+    animation: none;
+  }
+}
+
+html {
+  scroll-behavior: smooth;
+}
