@@ -4,57 +4,72 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="light only" />
+    <meta name="supported-color-schemes" content="light" />
     <title>Confirm your email</title>
+    <!-- Geist, the app's typeface. Mail apps that block web fonts use the system font. -->
+    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;700&display=swap" rel="stylesheet" />
   </head>
+  <!-- Supabase: Authentication > Email Templates > Confirm signup. Subject: Confirm your email for ReedArk -->
   <body style="margin:0; padding:0; background:#f6f6f6; -webkit-text-size-adjust:100%;">
     <!-- Preview text shown in the inbox list -->
-    <div style="display:none; max-height:0; overflow:hidden; opacity:0;">Confirm your email to finish setting up your church on ReedArk.</div>
+    <div style="display:none; max-height:0; overflow:hidden; opacity:0;">Confirm your email to finish setting up your church on ReedArk.&#8199;&#65279;&#847;&#8199;&#65279;&#847;&#8199;&#65279;&#847;</div>
 
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f6f6f6;">
       <tr>
         <td align="center" style="padding:40px 16px;">
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:520px;">
+            <!-- Logo (public/brand/email-logo.png, the stacked logo) -->
             <tr>
-              <td style="padding:0 4px 20px; font-family:-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:13px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; color:#0e8a3e;">
-                ReedArk
+              <td style="padding:0 4px 24px;">
+                <a href="https://reedark.com" style="text-decoration:none;">
+                  <img src="https://reedark.com/brand/email-logo.png" width="120" height="74" alt="ReedArk" style="display:block; border:0; width:120px; height:auto; font-family:'Geist', -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:20px; font-weight:700; color:#121212;" />
+                </a>
               </td>
             </tr>
+
             <tr>
               <td style="background:#ffffff; border-radius:8px; border:1px solid #e4e4e4; padding:36px 32px;">
-                <h1 style="margin:0 0 12px; font-family:-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:24px; line-height:1.3; font-weight:700; color:#121212;">
+                <h1 style="margin:0 0 12px; font-family:'Geist', -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:24px; line-height:1.3; font-weight:700; color:#121212;">
                   Confirm your email
                 </h1>
-                <p style="margin:0 0 24px; font-family:-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:16px; line-height:1.6; color:#4d4d4d;">
-                  You're one step from putting verses on screen as they're preached. Confirm <strong style="color:#121212;">{{ .Email }}</strong> to finish setting up your account.
+                <p style="margin:0 0 28px; font-family:'Geist', -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:16px; line-height:1.6; color:#5e5e5e;">
+                  You're one step from putting verses and lyrics on screen as they're preached and sung. Confirm <strong style="color:#121212;">{{ .Email }}</strong> to finish setting up your account.
                 </p>
 
+                <!-- Pill button, the app's primary style -->
                 <table role="presentation" cellpadding="0" cellspacing="0" border="0">
                   <tr>
                     <td align="center" bgcolor="#1ed760" style="border-radius:500px;">
                       <a href="{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=email"
-                         style="display:inline-block; padding:15px 32px; font-family:-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:13px; font-weight:700; letter-spacing:1.6px; text-transform:uppercase; color:#000000; text-decoration:none; border-radius:500px;">
+                         style="display:inline-block; padding:15px 32px; font-family:'Geist', -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:13px; font-weight:700; letter-spacing:1.3px; text-transform:uppercase; color:#000000; text-decoration:none; border-radius:500px;">
                         Confirm email
                       </a>
                     </td>
                   </tr>
                 </table>
 
-                <p style="margin:28px 0 6px; font-family:-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:13px; line-height:1.6; color:#7c7c7c;">
+                <p style="margin:28px 0 6px; font-family:'Geist', -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:13px; line-height:1.6; color:#8b8b8b;">
                   Button not working? Paste this link into your browser:
                 </p>
                 <p style="margin:0; font-family:Menlo, Consolas, monospace; font-size:12px; line-height:1.5; word-break:break-all;">
                   <a href="{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=email" style="color:#0e8a3e;">{{ .RedirectTo }}&amp;token_hash={{ .TokenHash }}&amp;type=email</a>
                 </p>
 
-                <hr style="border:none; border-top:1px solid #ececec; margin:28px 0 20px;" />
-                <p style="margin:0; font-family:-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:13px; line-height:1.6; color:#7c7c7c;">
+                <hr style="border:none; border-top:1px solid #ededed; margin:28px 0 20px;" />
+                <p style="margin:0; font-family:'Geist', -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:13px; line-height:1.6; color:#8b8b8b;">
                   The link works once and expires in 1 hour. If you didn't sign up for ReedArk, you can ignore this email. Nobody can use the account until this address is confirmed.
                 </p>
               </td>
             </tr>
+
             <tr>
-              <td style="padding:20px 4px 0; font-family:-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:12px; line-height:1.6; color:#8b8b8b;">
-                ReedArk puts the Bible verse your preacher mentions on the church screen in about two seconds.
+              <td style="padding:20px 4px 0; font-family:'Geist', -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:12px; line-height:1.7; color:#8b8b8b;">
+                ReedArk puts Bible verses and song lyrics on your church screen as they're preached and sung.<br />
+                <a href="https://reedark.com" style="color:#8b8b8b; text-decoration:underline;">reedark.com</a>
+                &nbsp;·&nbsp;
+                <a href="https://reedark.com/terms" style="color:#8b8b8b; text-decoration:underline;">Terms</a>
+                &nbsp;·&nbsp;
+                <a href="https://reedark.com/privacy" style="color:#8b8b8b; text-decoration:underline;">Privacy</a>
               </td>
             </tr>
           </table>

@@ -1,4 +1,4 @@
-import { BookOpen, CircleAlert, CircleCheck, Info, LoaderCircle } from "lucide-react";
+import { CircleAlert, CircleCheck, Info, LoaderCircle } from "lucide-react";
 import Link from "next/link";
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from "react";
 import { APP_NAME } from "@/lib/brand";
@@ -6,13 +6,32 @@ import { APP_NAME } from "@/lib/brand";
 // Shared primitives. Spotify geometry: pill buttons with an uppercase label
 // voice, circular icon buttons, borderless surfaces, inset-shadow fields.
 
-export function Logo({ href = "/", compact = false }: { href?: string; compact?: boolean }) {
+type LogoVariant = "header" | "normal" | "icon";
+
+const LOGO_SIZE: Record<LogoVariant, string> = { header: "h-6", normal: "h-12", icon: "h-7" };
+
+/**
+ * The ReedArk logo (files in public/brand). "header" is the wide one for
+ * page headers, "normal" the stacked one for everywhere else, "icon" the
+ * mark alone. Dark lettering on light backgrounds and light lettering on
+ * dark; globals.css shows the right one for the theme. `className` sets the
+ * height (h-8, say); the width follows.
+ */
+export function Logo({ href = "/", variant = "normal", className }: { href?: string; variant?: LogoVariant; className?: string }) {
+  const size = className ?? LOGO_SIZE[variant];
   return (
-    <Link href={href} className="inline-flex items-center gap-2.5">
-      <span className="grid h-8 w-8 place-items-center rounded-full bg-accent-fill text-on-accent">
-        <BookOpen size={17} />
-      </span>
-      {!compact && <span className="text-[15px] font-bold tracking-tight">{APP_NAME}</span>}
+    <Link href={href} aria-label={`${APP_NAME} home`} className="inline-flex shrink-0 items-center">
+      {variant === "icon" ? (
+        // eslint-disable-next-line @next/next/no-img-element -- a small SVG; next/image adds nothing here
+        <img src="/brand/logo-icon.svg" alt={APP_NAME} className={`${size} w-auto`} />
+      ) : (
+        <>
+          {/* eslint-disable-next-line @next/next/no-img-element -- a small SVG; next/image adds nothing here */}
+          <img src={`/brand/logo-${variant}-on-light.svg`} alt={APP_NAME} className={`logo-on-light ${size} w-auto`} />
+          {/* eslint-disable-next-line @next/next/no-img-element -- as above */}
+          <img src={`/brand/logo-${variant}-on-dark.svg`} alt={APP_NAME} className={`logo-on-dark ${size} w-auto`} />
+        </>
+      )}
     </Link>
   );
 }

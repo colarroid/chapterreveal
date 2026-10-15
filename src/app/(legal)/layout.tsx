@@ -8,7 +8,7 @@ export default function LegalLayout({ children }: { children: React.ReactNode })
   return (
     <div className="flex min-h-dvh flex-col">
       <header className="mx-auto flex w-full max-w-3xl items-center gap-3 px-5 py-5">
-        <Logo />
+        <Logo className="h-10" />
         <span className="ml-auto">
           <ThemeToggle />
         </span>

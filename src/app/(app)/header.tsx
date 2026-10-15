@@ -141,7 +141,13 @@ export function AppHeader({ churchName, email, firstName, lastName }: { churchNa
 
   return (
     <header className="flex h-16 shrink-0 items-center gap-4 bg-bg px-4">
-      <Logo href="/dashboard" compact />
+      {/* The wide logo; the mark alone where phones are tight on room. */}
+      <span className="sm:hidden">
+        <Logo href="/dashboard" variant="icon" />
+      </span>
+      <span className="hidden sm:inline-flex">
+        <Logo href="/dashboard" variant="header" />
+      </span>
       <span className="hidden max-w-48 truncate text-sm font-bold lg:block">{churchName}</span>
 
       <nav className="flex items-center gap-1 rounded-full bg-surface p-1">

@@ -67,12 +67,7 @@ export default async function Home() {
               14 px semibold links, a dark pill button). */}
           <header className="fixed inset-x-0 top-6 z-50 px-4 sm:px-6">
             <div className="mx-auto flex h-[54px] max-w-[964px] items-center justify-between gap-6 rounded-full bg-bg py-2 pr-2 pl-5 shadow-[0_4px_7px_rgba(18,18,17,0.06)] ring-1 ring-line sm:pl-6">
-              <span className="sm:hidden">
-                <Logo compact />
-              </span>
-              <span className="hidden sm:block">
-                <Logo />
-              </span>
+              <Logo variant="header" className="h-5 sm:h-6" />
               <nav className="flex items-center gap-0.5 text-sm leading-4 font-semibold tracking-[-0.14px] sm:gap-2">
                 <a href="#how" className="hidden h-[38px] items-center px-3 text-ink/75 transition hover:text-ink sm:flex">
                   How it works
@@ -217,7 +212,7 @@ export default async function Home() {
       <footer className="border-t border-line">
         <div className="mx-auto grid max-w-[60rem] gap-10 px-5 py-12 grid-cols-2 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:gap-x-16 sm:px-8">
           <div className="col-span-2 max-w-sm sm:col-span-1">
-            <Logo />
+            <Logo className="h-14" />
             <p className="mt-4 text-sm text-muted">
               {APP_NAME} listens to the sermon and the singing, and puts scripture and song lyrics on your projector and livestream. Free while we
               pilot with churches.

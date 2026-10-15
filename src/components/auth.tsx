@@ -1,8 +1,9 @@
-import { ArrowLeft, BookOpen } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { APP_NAME } from "@/lib/brand";
 import { ThemeToggle } from "./theme";
+import { Logo } from "./ui";
 
 // Auth pages after terms.so: no card, a narrow column on the page itself,
 // the logo mark, a medium-weight title, filled pill fields and full-width
@@ -25,9 +26,7 @@ export function AuthShell({
     <main className="flex min-h-dvh flex-col items-center justify-center px-6 py-12">
       {head}
       <div className="w-full max-w-[360px]">
-        <Link href="/" aria-label={`${APP_NAME} home`} className="inline-grid h-10 w-10 place-items-center rounded-full bg-accent-fill text-on-accent">
-          <BookOpen size={20} />
-        </Link>
+        <Logo className="h-14" />
         <h1 className="mt-7 text-[26px] leading-tight font-medium tracking-[-0.02em]">{title}</h1>
         {subtitle && <p className="mt-2 text-[15px] text-muted">{subtitle}</p>}
         <div className="mt-8">{children}</div>
