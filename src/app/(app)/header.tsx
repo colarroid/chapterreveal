@@ -148,7 +148,6 @@ export function AppHeader({ churchName, email, firstName, lastName }: { churchNa
       <span className="hidden sm:inline-flex">
         <Logo href="/dashboard" variant="header" className="h-[31px]" />
       </span>
-      <span className="hidden max-w-48 truncate text-sm font-bold lg:block">{churchName}</span>
 
       <nav className="flex items-center gap-1 rounded-full bg-surface p-1">
         {NAV.map(({ href, label, icon }) => {
