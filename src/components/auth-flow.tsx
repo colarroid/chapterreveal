@@ -153,6 +153,10 @@ export function AuthFlow({
     if (error) setError(error.message);
   }
 
+  // Waiting for the email link: once it's clicked (often in another tab, or
+  // on a phone), this tab notices the sign-in and carries on by itself.
+  useSignedInElsewhere(sent, next);
+
   async function resend() {
     await supabaseBrowser().auth.resend({ type: "signup", email, options: { emailRedirectTo: `${location.origin}/auth/callback?next=/onboarding` } });
     setResent(true);
@@ -359,6 +363,47 @@ export function AuthFlow({
 // Supabase refuses a second email to the same address within 60 seconds, so
 // the button counts down instead of failing.
 const RESEND_WAIT_S = 60;
+
+/**
+ * While `active`, watches for this browser becoming signed in (the email link
+ * opened in another tab sets the shared cookie) and then goes to `next`.
+ * Checks when the tab is looked at again, and every few seconds meanwhile.
+ */
+function useSignedInElsewhere(active: boolean, next: string) {
+  const router = useRouter();
+  useEffect(() => {
+    if (!active) return;
+    const supabase = supabaseBrowser();
+    let done = false;
+    const go = () => {
+      if (done) return;
+      done = true;
+      router.replace(next);
+      router.refresh();
+    };
+    const check = async () => {
+      if (done) return;
+      const { data } = await supabase.auth.getSession();
+      if (data.session) go();
+    };
+    const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session && (event === "SIGNED_IN" || event === "TOKEN_REFRESHED")) go();
+    });
+    const onShow = () => {
+      if (document.visibilityState === "visible") void check();
+    };
+    document.addEventListener("visibilitychange", onShow);
+    window.addEventListener("focus", onShow);
+    const timer = setInterval(() => void check(), 3000);
+    return () => {
+      done = true;
+      sub.subscription.unsubscribe();
+      document.removeEventListener("visibilitychange", onShow);
+      window.removeEventListener("focus", onShow);
+      clearInterval(timer);
+    };
+  }, [active, next, router]);
+}
 
 function ResendLink({ email, redirectTo }: { email: string; redirectTo: string }) {
   const [wait, setWait] = useState(RESEND_WAIT_S);
