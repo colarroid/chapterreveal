@@ -32,7 +32,7 @@ import { cleanDisplay, type DisplaySettings } from "@/lib/display/theme";
 import { Button, Chip, IconButton, Kbd, PixelLoader, SignalBars } from "@/components/ui";
 import { AUTO_REPEAT_MS, eligible, HOLD_MS, readiness } from "@/lib/live/auto-show";
 import { outbox } from "@/lib/live/outbox";
-import { lastSpokenTranslation } from "@/lib/scripture/spoken-translations";
+import { lastSpokenTranslation, matchSpokenTranslation } from "@/lib/scripture/spoken-translations";
 import { findTranslation, starredFirst, type TranslationInfo } from "@/lib/scripture/translations";
 import { closeProjector, presentOnProjector, useProjectorOpen } from "@/lib/live/present";
 import { CONSOLE_CHANNEL, ScreenSender, type ConsoleMessage } from "@/lib/live/screen";
@@ -495,7 +495,7 @@ export function Console({ churchId, userId, screenToken, translationId, translat
       const now = Date.now();
       if (lastAsked.current.short === said.short && now - lastAsked.current.at < 15_000) return;
       lastAsked.current = { short: said.short, at: now };
-      const match = translations.find((t) => t.short.toUpperCase() === said.short);
+      const match = matchSpokenTranslation(translations, said.short);
       if (match && autoRef.current) {
         if (match.id !== translationRef.current) setTranslation(match.id);
         setAsked({ short: said.short, id: match.id, switched: true });

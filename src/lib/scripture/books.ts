@@ -115,6 +115,12 @@ export function transcriptionKeyterms(): string[] {
   terms.add("Psalm");
   // Translations named aloud ("…in the KJV"): spelled-out abbreviations are
   // easily misheard ("NHEB" came back as "NEB").
-  for (const t of ["KJV", "NKJV", "NIV", "NLT", "ESV", "NASB", "NHEB", "BSB", "ASV", "BBE", "Amplified", "King James", "New King James"]) terms.add(t);
+  // Spoken names of every translation the parser knows (spoken-translations.ts).
+  for (const t of [
+    "KJV", "NKJV", "NIV", "NLT", "ESV", "NASB", "NHEB", "BSB", "ASV", "BBE", "AMPC", "TPT",
+    "King James", "New King James", "American King James", "Updated King James",
+    "New Living Translation", "Amplified", "Amplified Classic", "The Message", "Passion Translation",
+    "Berean", "Young's Literal", "Darby", "Webster's Bible", "Good News Translation",
+  ]) terms.add(t);
   return [...terms];
 }

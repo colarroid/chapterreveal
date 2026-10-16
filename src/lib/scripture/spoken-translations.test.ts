@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { lastSpokenTranslation, spokenTranslations } from "./spoken-translations";
+import { lastSpokenTranslation, matchSpokenTranslation, spokenTranslations } from "./spoken-translations";
+import { BUILT_IN_TRANSLATIONS } from "./translations";
 
 const last = (t: string) => lastSpokenTranslation(t)?.short ?? null;
 
@@ -48,5 +49,59 @@ describe("translations named aloud", () => {
   it("ignores sermons that name no translation", () => {
     expect(last("turn with me to Romans chapter eight verse twenty eight")).toBeNull();
     expect(last("the kingdom of God is near")).toBeNull();
+  });
+});
+
+describe("every translation can be asked for by name", () => {
+  // How preachers say each one we have or expect: built-in, added (NKJV,
+  // NLT) and the licences being requested (AMP, AMPC, TPT, NIV, ESV).
+  const SAID: [string, string][] = [
+    ["Let's read John 3:16 in the King James Version", "KJV"],
+    ["turn with me, New King James", "NKJV"],
+    ["I'm reading from the New Living Translation", "NLT"],
+    ["in the NLT", "NLT"],
+    ["Berean Standard Bible", "BSB"],
+    ["the New Heart English Bible", "NHEB"],
+    ["American Standard Version", "ASV"],
+    ["Bible in Basic English", "BBE"],
+    ["the American King James Version", "AKJV"],
+    ["the Updated King James", "UKJV"],
+    ["read it in Darby", "DBY"],
+    ["Young's Literal Translation", "YLT"],
+    ["in Webster's Bible", "WBT"],
+    ["A Conservative Version", "ACV"],
+    ["read from the Amplified", "AMP"],
+    ["the Amplified Classic edition", "AMPC"],
+    ["the Classic Amplified", "AMPC"],
+    ["The Passion Translation", "TPT"],
+    ["in the NIV", "NIV"],
+    ["English Standard Version", "ESV"],
+  ];
+  it.each(SAID)("%s -> %s", (text, short) => {
+    expect(last(text)).toBe(short);
+  });
+
+  it("covers every built-in translation", () => {
+    const heard = new Set(SAID.map(([, s]) => s));
+    for (const t of BUILT_IN_TRANSLATIONS) expect(heard.has(t.short)).toBe(true);
+  });
+});
+
+describe("matching what was heard to the church's list", () => {
+  const list = [
+    { id: "kjv", short: "KJV" },
+    { id: "nkjv", short: "nkjv" },
+    { id: "nlt", short: "NLT" },
+    { id: "ampc", short: "AMPC" },
+  ];
+  it("finds it whatever case it was uploaded in", () => {
+    expect(matchSpokenTranslation(list, "NKJV")?.id).toBe("nkjv");
+    expect(matchSpokenTranslation(list, "KJV")?.id).toBe("kjv");
+  });
+  it("falls back to another edition of the same translation", () => {
+    expect(matchSpokenTranslation(list, "AMP")?.id).toBe("ampc");
+  });
+  it("finds nothing when the church doesn't have it", () => {
+    expect(matchSpokenTranslation(list, "ESV")).toBeUndefined();
   });
 });

@@ -38,6 +38,8 @@ const PATTERNS: Pattern[] = [
   { short: "ESV", plain: [abbr("esv"), /\benglish standard version\b/gi] },
   { short: "NASB", plain: [abbr("nasb"), /\bnew american standard(?: bible| version)?\b/gi] },
   { short: "ASV", plain: [abbr("asv"), /\b(?<!new )american standard version\b/gi] },
+  // The Classic edition before plain Amplified, which its name contains.
+  { short: "AMPC", plain: [abbr("ampc"), /\bamplified classic(?: edition| version| bible)?\b/gi, /\bclassic amplified(?: version| bible)?\b/gi] },
   { short: "AMP", plain: [/\bamplified (?:version|bible|translation)\b/gi], marked: ["amplified", "amp"].map(marked) },
   { short: "MSG", plain: [], marked: ["the message", "message"].map(marked) },
   { short: "GNT", plain: [/\bgood news (?:translation|bible)\b/gi] },
@@ -81,4 +83,25 @@ export function spokenTranslations(text: string): SpokenTranslation[] {
 export function lastSpokenTranslation(text: string): SpokenTranslation | null {
   const all = spokenTranslations(text);
   return all.length ? all[all.length - 1] : null;
+}
+
+// When the church doesn't have the exact one asked for, the nearest edition
+// it does have: "Amplified" with only the Classic edition, and so on.
+const FAMILY: Record<string, string[]> = {
+  AMP: ["AMPC"],
+  AMPC: ["AMP"],
+  NASB: ["NASB20", "NASB2020", "NASB95", "NASB1995"],
+  NIV: ["NIV2011", "NIVUK"],
+  NLT: ["NLTCE"],
+};
+
+const key = (short: string) => short.toUpperCase().replace(/[^A-Z0-9]/g, "");
+
+/**
+ * The church's translation for a name the preacher said: the same short
+ * name ("NKJV", however it was typed when uploaded), else a close edition.
+ */
+export function matchSpokenTranslation<T extends { short: string }>(list: T[], said: string): T | undefined {
+  const want = key(said);
+  return list.find((t) => key(t.short) === want) ?? (FAMILY[want] ?? []).map((k) => list.find((t) => key(t.short) === k)).find(Boolean);
 }
