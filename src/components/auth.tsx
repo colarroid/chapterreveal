@@ -26,7 +26,7 @@ export function AuthShell({
     <main className="flex min-h-dvh flex-col items-center justify-center px-6 py-12">
       {head}
       <div className="w-full max-w-[360px]">
-        <Logo className="h-14" />
+        <Logo className="h-[101px]" />
         <h1 className="mt-7 text-[26px] leading-tight font-medium tracking-[-0.02em]">{title}</h1>
         {subtitle && <p className="mt-2 text-[15px] text-muted">{subtitle}</p>}
         <div className="mt-8">{children}</div>
