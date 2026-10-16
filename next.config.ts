@@ -9,6 +9,19 @@ const nextConfig: NextConfig = {
     // Saving anything calls router.refresh(), which skips this.
     staleTimes: { dynamic: 30 },
   },
+  // The live site's own *.vercel.app addresses send visitors to https://reedark.com.
+  // Only production builds: preview builds stay reachable for testing.
+  async redirects() {
+    if (process.env.VERCEL_ENV !== "production") return [];
+    return [
+      {
+        source: "/:path*",
+        has: [{ type: "host", value: "(?<host>.+)\\.vercel\\.app" }],
+        destination: "https://reedark.com/:path*",
+        permanent: true,
+      },
+    ];
+  },
   async headers() {
     return [
       {
