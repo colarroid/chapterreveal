@@ -34,7 +34,8 @@ import { CONSOLE_CHANNEL, ScreenSender, type ConsoleMessage } from "@/lib/live/s
 import type { Slide } from "@/lib/scripture/bible";
 import { songKeyterms } from "@/lib/songs/keyterms";
 import { SongIndex, type SongMatch } from "@/lib/songs/matcher";
-import { firstLine, songBody, type SongSlide } from "@/lib/songs/songs";
+import { fetchAllSongs, keepSongs, songsAreFresh, songsInMemory, storedSongs, type FullSong } from "@/lib/songs/store";
+import { firstLine, songBody } from "@/lib/songs/songs";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { EndServiceButton, LevelMeter } from "../dashboard/console";
 import { useLiveService } from "../dashboard/use-live-service";
@@ -58,18 +59,8 @@ const FILTERS: { value: LibraryFilter; label: string; empty: string }[] = [
 const FILTER_KEY = "scripture.songFilter";
 const SETLIST_KEY = "scripture.setlist";
 
-interface FullSong {
-  id: string;
-  title: string;
-  author: string;
-  copyright: string;
-  ccli_number: string;
-  slides: SongSlide[];
-  shared: boolean;
-}
 
 const AUTO_KEY = "scripture.worshipAuto";
-const PAGE = 1000;
 const SHOWN = 300;
 
 const fold = (s: string) =>
@@ -99,21 +90,6 @@ function toSlide(song: FullSong, i: number): Slide | null {
   };
 }
 
-/** Every song's words, in pages, for following the singing and searching lyrics. */
-async function loadAllSongs(): Promise<FullSong[]> {
-  const out: FullSong[] = [];
-  for (let from = 0; ; from += PAGE) {
-    const { data, error } = await supabaseBrowser()
-      .from("songs")
-      .select("id, title, author, copyright, ccli_number, slides, church_id")
-      .order("title")
-      .range(from, from + PAGE - 1);
-    if (error) throw error;
-    for (const r of data ?? []) out.push({ ...(r as Omit<FullSong, "shared">), shared: r.church_id === null });
-    if (!data || data.length < PAGE) return out;
-  }
-}
-
 export function Worship({
   churchId,
   userId,
@@ -137,19 +113,33 @@ export function Worship({
 }) {
   const router = useRouter();
 
-  // ---- The songs' words, loaded in the background --------------------------
-  const [songs, setSongs] = useState<FullSong[] | null>(null);
+  // ---- The songs' words -------------------------------------------------------
+  // From memory when this tab was open before, else this browser's saved copy
+  // (instant), while a fresh copy downloads in the background (lib/songs/store).
+  const [songs, setSongs] = useState<FullSong[] | null>(() => songsInMemory(churchId));
   const [loadError, setLoadError] = useState("");
   useEffect(() => {
     let live = true;
-    loadAllSongs().then(
-      (s) => live && setSongs(s),
-      () => live && setLoadError("Could not load the songs. Check the connection and reload."),
+    if (!songsInMemory(churchId)) void storedSongs(churchId).then((saved) => live && saved && setSongs((cur) => cur ?? saved));
+    if (songsAreFresh(churchId)) return;
+    fetchAllSongs().then(
+      (fresh) => {
+        if (!live) return;
+        keepSongs(churchId, fresh, true);
+        setSongs(fresh);
+        setLoadError("");
+      },
+      // Offline or failed: the saved copy (if any) carries on; say so only without one.
+      () => live && !songsRef.current && setLoadError("Could not load the songs. Check the connection and reload."),
     );
     return () => {
       live = false;
     };
-  }, []);
+  }, [churchId]);
+  // Songs added, edited or deleted here go into the kept copy too.
+  useEffect(() => {
+    if (songs && songs !== songsInMemory(churchId)) keepSongs(churchId, songs);
+  }, [songs, churchId]);
   const byId = useMemo(() => new Map((songs ?? []).map((s, i) => [s.id, i])), [songs]);
   const index = useMemo(() => (songs ? new SongIndex(songs) : null), [songs]);
 

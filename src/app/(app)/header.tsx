@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import { forgetOfflinePages, OfflineChip } from "@/components/offline";
 import { ThemeToggle } from "@/components/theme";
 import { Logo } from "@/components/ui";
+import { forgetSongs } from "@/lib/songs/store";
 import { supabaseBrowser } from "@/lib/supabase/client";
 
 export const HEADER_ACTIONS_ID = "header-actions";
@@ -74,6 +75,7 @@ function AccountMenu({ person, churchName }: { person: Person; churchName: strin
     setSigningOut(true);
     await supabaseBrowser().auth.signOut();
     forgetOfflinePages();
+    forgetSongs();
     router.replace("/login");
     router.refresh();
   }

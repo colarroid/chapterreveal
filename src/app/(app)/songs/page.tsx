@@ -20,14 +20,21 @@ export default async function SongsPage() {
 
   // Titles only, the shared library and the church's own (the database
   // decides which rows this church can see). The words load in the browser.
+  // The first page also says how many there are; the rest come at once.
+  const page = (p: number, count = false) =>
+    Promise.resolve(
+      supabase
+        .from("songs")
+        .select("id, title, author, first_line, church_id", count ? { count: "exact" } : undefined)
+        .order("title")
+        .order("id")
+        .range(p * PAGE, p * PAGE + PAGE - 1),
+    );
+  const first = await page(0, true);
+  const rest = await Promise.all(Array.from({ length: Math.max(0, Math.ceil((first.count ?? 0) / PAGE) - 1) }, (_, i) => page(i + 1)));
   const library: LibrarySong[] = [];
   let error: string | null = null;
-  for (let from = 0; ; from += PAGE) {
-    const { data, error: e } = await supabase
-      .from("songs")
-      .select("id, title, author, first_line, church_id")
-      .order("title")
-      .range(from, from + PAGE - 1);
+  for (const { data, error: e } of [first, ...rest]) {
     if (e) {
       error = e.message;
       break;
@@ -41,7 +48,6 @@ export default async function SongsPage() {
         shared: r.church_id === null,
       });
     }
-    if (!data || data.length < PAGE) break;
   }
 
   const { data: setlists } = await setlistsQuery;
