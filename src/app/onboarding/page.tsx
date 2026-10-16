@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { getSessionUser, supabaseServer } from "@/lib/supabase/server";
 import { OnboardingForm } from "./form";
 
-export const metadata = { title: "Your church" };
+export const metadata = { title: "Your church", robots: { index: false, follow: false } };
 
 export default async function OnboardingPage({ searchParams }: { searchParams: Promise<{ invite?: string }> }) {
   const user = await getSessionUser();

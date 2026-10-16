@@ -1,6 +1,9 @@
 import { requireMembership } from "@/lib/supabase/server";
 import { AppHeader } from "./header";
 
+// The church console and its settings are private.
+export const metadata = { robots: { index: false, follow: false } };
+
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const m = await requireMembership();
   return (

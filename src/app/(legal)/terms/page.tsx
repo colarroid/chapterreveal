@@ -2,7 +2,11 @@ import Link from "next/link";
 import { Clause, ContactEmail, Fill, LegalPage } from "@/components/legal";
 import { APP_NAME, LEGAL } from "@/lib/brand";
 
-export const metadata = { title: "Terms of Use" };
+export const metadata = {
+  title: "Terms of Use",
+  description: "The terms for using ReedArk, the scripture and song lyrics projection service for churches.",
+  alternates: { canonical: "/terms" },
+};
 
 export default function TermsPage() {
   return (

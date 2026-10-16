@@ -2,7 +2,11 @@ import Link from "next/link";
 import { Clause, ContactEmail, Fill, LegalPage } from "@/components/legal";
 import { APP_NAME, LEGAL } from "@/lib/brand";
 
-export const metadata = { title: "Privacy Policy" };
+export const metadata = {
+  title: "Privacy Policy",
+  description: "How ReedArk handles personal data, service audio and church content.",
+  alternates: { canonical: "/privacy" },
+};
 
 export default function PrivacyPage() {
   return (

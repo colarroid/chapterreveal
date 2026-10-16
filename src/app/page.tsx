@@ -5,7 +5,7 @@ import { Features } from "@/components/landing/features";
 import { AmbientFragments, TypedHeadline } from "@/components/landing/hero";
 import { ThemeToggle } from "@/components/theme";
 import { Logo } from "@/components/ui";
-import { APP_NAME } from "@/lib/brand";
+import { APP_NAME, SITE_DESCRIPTION, SITE_URL } from "@/lib/brand";
 import { getSessionUser } from "@/lib/supabase/server";
 
 // Layout after terms.so: a tall gradient hero with a typed headline, product
@@ -54,11 +54,41 @@ const HIGHLIGHTS = [
 const HERO_GRADIENT =
   "linear-gradient(180deg, #050505 0%, #06110a 18%, #072014 34%, #0a3a1e 48%, #0f6330 60%, #17a64c 70%, #1ed760 76%, color-mix(in srgb, #1ed760 45%, var(--bg)) 84%, var(--bg) 100%)";
 
+export const metadata = { alternates: { canonical: "/" } };
+
+// What search engines read about the product (schema.org), alongside the page.
+const STRUCTURED_DATA = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      "@id": `${SITE_URL}/#organization`,
+      name: APP_NAME,
+      url: SITE_URL,
+      logo: `${SITE_URL}/brand/app-icon-512.png`,
+    },
+    {
+      "@type": "SoftwareApplication",
+      name: APP_NAME,
+      url: SITE_URL,
+      description: SITE_DESCRIPTION,
+      applicationCategory: "MultimediaApplication",
+      applicationSubCategory: "Church presentation software",
+      operatingSystem: "Windows, macOS, ChromeOS (web browser)",
+      offers: { "@type": "Offer", price: "0", priceCurrency: "USD", description: "Free plan" },
+      publisher: { "@id": `${SITE_URL}/#organization` },
+    },
+    { "@type": "WebSite", name: APP_NAME, url: SITE_URL, publisher: { "@id": `${SITE_URL}/#organization` } },
+  ],
+};
+
 export default async function Home() {
   if (await getSessionUser()) redirect("/dashboard");
 
   return (
     <div className="min-h-dvh">
+      {/* Fixed text from this file only (no user input), so it can go in as is. */}
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(STRUCTURED_DATA) }} />
       <section className="relative" style={{ background: HERO_GRADIENT }}>
         <AmbientFragments />
         <div className="relative mx-auto max-w-[60rem] px-5 sm:px-8">

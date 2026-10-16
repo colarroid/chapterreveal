@@ -1,10 +1,10 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono, Montserrat, Playfair_Display, Source_Serif_4 } from "next/font/google";
 import { ConfirmHost } from "@/components/confirm";
 import { OfflineSupport } from "@/components/offline";
 import { compatScript } from "@/lib/compat-script";
 import { themeScript } from "@/lib/theme-script";
-import { APP_NAME } from "@/lib/brand";
+import { APP_NAME, SITE_DESCRIPTION, SITE_KEYWORDS, SITE_TITLE, SITE_URL } from "@/lib/brand";
 import "./globals.css";
 
 // The UI face follows terms.so, which uses ABC Diatype (Dinamo, commercial).
@@ -24,9 +24,33 @@ const serif = Source_Serif_4({ variable: "--font-serif-face", subsets: ["latin"]
 const bold = Montserrat({ variable: "--font-bold-face", subsets: ["latin", "latin-ext"], weight: ["700", "800"], preload: false });
 const elegant = Playfair_Display({ variable: "--font-elegant-face", subsets: ["latin", "latin-ext"], weight: ["500", "600"], preload: false });
 
+// Search engines and link previews. Pages add their own title (and
+// description where it matters); the share image is app/opengraph-image.png.
 export const metadata: Metadata = {
-  title: { default: APP_NAME, template: `%s · ${APP_NAME}` },
-  description: "Puts scripture and song lyrics on your church screen the moment they are preached or sung.",
+  metadataBase: new URL(SITE_URL),
+  title: { default: SITE_TITLE, template: `%s · ${APP_NAME}` },
+  description: SITE_DESCRIPTION,
+  applicationName: APP_NAME,
+  keywords: SITE_KEYWORDS,
+  category: "religion",
+  openGraph: {
+    type: "website",
+    siteName: APP_NAME,
+    url: "/",
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
+    locale: "en_NG",
+  },
+  twitter: { card: "summary_large_image", title: SITE_TITLE, description: SITE_DESCRIPTION },
+  robots: { index: true, follow: true },
+  formatDetection: { telephone: false, email: false, address: false },
+};
+
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: "#121212" },
+  ],
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
