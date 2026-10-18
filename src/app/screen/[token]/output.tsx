@@ -13,7 +13,25 @@ import { supabaseBrowser } from "@/lib/supabase/client";
 // church's realtime channel, and re-reads the saved state whenever the
 // socket (re)connects and every 15 s, so it heals after any network blip.
 
-export function OutputScreen({ token, layout, present = false }: { token: string; layout: SlideLayout; present?: boolean }) {
+/** The key colour behind the livestream output: standard chroma green. */
+export const CHROMA_GREEN = "#00b140";
+
+export function OutputScreen({
+  token,
+  layout,
+  present = false,
+  online = false,
+}: {
+  token: string;
+  layout: SlideLayout;
+  present?: boolean;
+  /**
+   * The livestream output (/screen/<address>/online): chroma green behind
+   * everything for vMix or OBS to key out; lyrics in a lower third so the
+   * camera shot stays visible, scripture full screen.
+   */
+  online?: boolean;
+}) {
   const [slide, setSlide] = useState<Slide | null>(null);
   const [visible, setVisible] = useState(false);
   const [lost, setLost] = useState(false);
@@ -32,7 +50,12 @@ export function OutputScreen({ token, layout, present = false }: { token: string
     const onMessage = (e: MessageEvent) => {
       if (e.origin === location.origin && e.data === PRESENT_MESSAGE) go();
     };
-    const onChange = () => setFullscreen(!!document.fullscreenElement);
+    const onChange = () => {
+      const full = !!document.fullscreenElement;
+      setFullscreen(full);
+      // The console shows "Fill projector screen" until this says it's full.
+      window.opener?.postMessage(`${PRESENT_MESSAGE}:${full ? "full" : "windowed"}`, location.origin);
+    };
     window.addEventListener("message", onMessage);
     window.addEventListener("pointerdown", go);
     window.addEventListener("keydown", go);
@@ -50,12 +73,18 @@ export function OutputScreen({ token, layout, present = false }: { token: string
   const needsClick = present && !fullscreen;
 
   useEffect(() => {
-    // vMix keys out a transparent page for the lower-third layout.
-    if (layout === "lower") {
+    // vMix keys out a transparent page for the lower-third layout; the online
+    // output is keyed on its green instead.
+    if (layout === "lower" && !online) {
       document.documentElement.style.background = "transparent";
       document.body.style.background = "transparent";
     }
-  }, [layout]);
+    // The online output is green to the very edge, blank screen included.
+    if (online) {
+      document.documentElement.style.background = CHROMA_GREEN;
+      document.body.style.background = CHROMA_GREEN;
+    }
+  }, [layout, online]);
 
   // No cursor on the projector, except while it needs that one click.
   useEffect(() => {
@@ -103,8 +132,10 @@ export function OutputScreen({ token, layout, present = false }: { token: string
       apply((data as { payload: ScreenPayload | null }).payload);
     };
 
+    // Private channel: anyone may receive (this page isn't signed in), only
+    // the church's members may send (migration 0019).
     const channel = supabase
-      .channel(screenTopic(token))
+      .channel(screenTopic(token), { config: { private: true } })
       .on("broadcast", { event: SCREEN_EVENT }, ({ payload }) => apply(payload as ScreenPayload))
       .subscribe((status) => {
         if (status === "SUBSCRIBED") {
@@ -130,7 +161,12 @@ export function OutputScreen({ token, layout, present = false }: { token: string
 
   return (
     <div className="fixed inset-0">
-      <SlideView slide={slide} layout={layout} visible={visible} />
+      <SlideView
+        slide={slide}
+        layout={online ? (slide?.kind === "song" ? "lower" : "full") : layout}
+        visible={visible}
+        chroma={online ? CHROMA_GREEN : undefined}
+      />
       {/* A dot the operator can see on the projector; invisible to the room from a distance. */}
       {lost && !replaced && <div className="absolute right-3 bottom-3 h-2 w-2 rounded-full bg-warning" title="Reconnecting" />}
       {needsClick && (

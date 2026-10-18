@@ -59,12 +59,19 @@ export const SlideView = memo(function SlideView({
   layout = "full",
   visible = true,
   theme,
+  chroma,
 }: {
   slide: Slide | null;
   layout?: SlideLayout;
   visible?: boolean;
   /** Overrides the slide's own theme (the console preview, the theme editor). */
   theme?: DisplayTheme;
+  /**
+   * The livestream output: a flat key colour (chroma green) behind
+   * everything, blank screen included, for vMix or OBS to key out. The
+   * slide's own background isn't drawn.
+   */
+  chroma?: string;
 }) {
   const t = themeFor(slide, theme);
   const font = FONTS.find((f) => f.key === t.font) ?? FONTS[0];
@@ -132,9 +139,10 @@ export const SlideView = memo(function SlideView({
 
   if (lower) {
     return (
-      <div className="relative h-full w-full overflow-hidden [container-type:inline-size]">
+      <div className="relative h-full w-full overflow-hidden [container-type:inline-size]" style={chroma ? { background: chroma } : undefined}>
         <div
-          className={`absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/80 to-black/0 px-[6cqw] pt-[4cqw] pb-[3.2cqw] transition-opacity duration-150 ${on ? "opacity-100" : "opacity-0"}`}
+          // On green (online output) the band is solid: a fade into the key colour comes out as a dark-green haze once keyed.
+          className={`absolute inset-x-0 bottom-0 ${chroma ? "bg-[#0b0b0b] pt-[2.6cqw]" : "bg-gradient-to-t from-black/90 via-black/80 to-black/0 pt-[4cqw]"} px-[6cqw] pb-[3.2cqw] transition-opacity duration-150 ${on ? "opacity-100" : "opacity-0"}`}
           style={{ color: textColor }}
         >
           {body}
@@ -146,9 +154,9 @@ export const SlideView = memo(function SlideView({
   const justify = t.position === "top" ? "justify-start" : t.position === "bottom" ? "justify-end" : "justify-center";
   return (
     // Blank (Live off, or nothing up) is plain black, background and all.
-    <div className="relative h-full w-full overflow-hidden bg-black [container-type:inline-size]">
+    <div className="relative h-full w-full overflow-hidden bg-black [container-type:inline-size]" style={chroma ? { background: chroma } : undefined}>
       <div className={`absolute inset-0 transition-opacity duration-200 ${on ? "opacity-100" : "opacity-0"}`}>
-        <Backdrop background={t.background} dim={t.dim} />
+        {!chroma && <Backdrop background={t.background} dim={t.dim} />}
         <div className={`absolute inset-0 flex flex-col px-[7cqw] py-[5cqw] ${justify} ${t.align === "left" ? "items-start text-left" : "items-center text-center"}`}>
           <div className="max-w-[86cqw]" style={{ color: textColor }}>
             {body}

@@ -7,6 +7,7 @@ import {
   ExternalLink,
   LoaderCircle,
   Mic,
+  Maximize,
   MonitorOff,
   MonitorUp,
   Music,
@@ -29,7 +30,7 @@ import { Dropdown } from "@/components/dropdown";
 import { SlideView } from "@/components/slide-view";
 import { cleanDisplay, type DisplaySettings } from "@/lib/display/theme";
 import { Button, Chip, IconButton, Kbd } from "@/components/ui";
-import { closeProjector, presentOnProjector, useProjectorOpen } from "@/lib/live/present";
+import { closeProjector, fillProjectorScreen, presentOnProjector, useProjectorOpen } from "@/lib/live/present";
 import { CONSOLE_CHANNEL, ScreenSender, type ConsoleMessage } from "@/lib/live/screen";
 import type { Slide } from "@/lib/scripture/bible";
 import { songKeyterms } from "@/lib/songs/keyterms";
@@ -278,7 +279,7 @@ export function Worship({
     setPresenting(false);
     syncProjector();
   }
-  const [projectorOpen, syncProjector] = useProjectorOpen();
+  const [projectorOpen, syncProjector, projectorFull] = useProjectorOpen();
   function stopPresenting() {
     closeProjector();
     syncProjector();
@@ -705,6 +706,12 @@ export function Worship({
                         >
                           <ExternalLink size={16} />
                         </a>
+                        {/* The projector window isn't filling its screen (the address bar shows): one click here fixes it. */}
+                        {projectorOpen && !projectorFull && (
+                          <Button size="sm" variant="outline" className="h-10" onClick={fillProjectorScreen} title="The projector window isn't full screen yet. Click to fill it.">
+                            <Maximize size={14} /> Fill projector screen
+                          </Button>
+                        )}
                         {projectorOpen ? (
                           <Button size="sm" variant="secondary" className="h-10" onClick={stopPresenting} title="Close the projector window">
                             <MonitorOff size={14} /> Stop presenting

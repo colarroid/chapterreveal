@@ -46,10 +46,36 @@ let projector: Window | null = null;
 
 export const isProjectorOpen = () => !!projector && !projector.closed;
 
+// Whether the projector window fills its screen, as it last told us.
+let projectorFull = false;
+if (typeof window !== "undefined") {
+  window.addEventListener("message", (e) => {
+    if (e.origin !== location.origin || typeof e.data !== "string") return;
+    if (e.data === `${PRESENT_MESSAGE}:full`) projectorFull = true;
+    else if (e.data === `${PRESENT_MESSAGE}:windowed`) projectorFull = false;
+  });
+}
+
+/**
+ * Makes the projector window fill its screen. Call it from a click in the
+ * console: Chrome lets this window hand that click's permission to the
+ * projector window (capability delegation), so nobody has to click on the
+ * projector itself.
+ */
+export function fillProjectorScreen() {
+  if (!isProjectorOpen()) return;
+  try {
+    projector!.postMessage(PRESENT_MESSAGE, { targetOrigin: location.origin, delegate: "fullscreen" } as WindowPostMessageOptions);
+  } catch {
+    projector!.postMessage(PRESENT_MESSAGE, location.origin);
+  }
+}
+
 /** Closes the projector window. */
 export function closeProjector() {
   projector?.close();
   projector = null;
+  projectorFull = false;
 }
 
 /**
@@ -57,14 +83,19 @@ export function closeProjector() {
  * close it themselves). Call the returned function after opening or closing
  * it to update at once.
  */
-export function useProjectorOpen(): [boolean, () => void] {
+export function useProjectorOpen(): [boolean, () => void, boolean] {
   const [open, setOpen] = useState(false);
-  const sync = useCallback(() => setOpen(isProjectorOpen()), []);
+  const [full, setFull] = useState(false);
+  const sync = useCallback(() => {
+    const isOpen = isProjectorOpen();
+    setOpen(isOpen);
+    setFull(isOpen && projectorFull);
+  }, []);
   useEffect(() => {
     const t = setInterval(sync, 1000);
     return () => clearInterval(t);
   }, [sync]);
-  return [open, sync];
+  return [open, sync, full];
 }
 
 /**

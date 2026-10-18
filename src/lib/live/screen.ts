@@ -43,14 +43,21 @@ export class ScreenSender {
     private churchId: string,
     token: string,
   ) {
-    this.channel = supabase.channel(screenTopic(token), { config: { broadcast: { ack: false, self: false } } });
+    // Private: only signed-in members of the church may send to its screen
+    // (migration 0019), so the connection carries the operator's sign-in.
+    this.channel = supabase.channel(screenTopic(token), { config: { private: true, broadcast: { ack: false, self: false } } });
     // When the socket comes back after a drop, vMix and other PCs missed
     // whatever went up meanwhile: send the current slide again.
-    this.channel.subscribe((status) => {
-      const up = status === "SUBSCRIBED";
-      if (up && !this.connected) this.catchUp();
-      this.connected = up;
-    });
+    void supabase.realtime
+      .setAuth()
+      .catch(() => {})
+      .then(() =>
+        this.channel.subscribe((status) => {
+          const up = status === "SUBSCRIBED";
+          if (up && !this.connected) this.catchUp();
+          this.connected = up;
+        }),
+      );
     this.local = typeof BroadcastChannel === "undefined" ? null : new BroadcastChannel(localScreenChannel(token));
     window.addEventListener("online", this.onOnline);
   }

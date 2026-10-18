@@ -66,6 +66,17 @@ function useCopy() {
   return { copied, copy };
 }
 
+/** "Grace Assembly, Lekki" -> "grace-assembly-lekki", for a first suggestion. */
+function slugFrom(name: string): string {
+  return name
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40);
+}
+
 function CopyRow({ label, value }: { label: string; value: string }) {
   const { copied, copy } = useCopy();
   return (
@@ -103,6 +114,9 @@ export function Settings(p: Props) {
 
   useEffect(() => setOrigin(location.origin), []);
   const out = p.screenToken && origin ? `${origin}/screen/${p.screenToken}` : "";
+  // The output address: a random code until an admin picks a name for it.
+  const customAddress = !/^[0-9a-f]{36}$/.test(p.screenToken);
+  const [screenAddress, setScreenAddress] = useState(customAddress ? p.screenToken : slugFrom(p.churchName));
 
   async function run(fn: () => PromiseLike<{ error: { message: string } | null }>, ok: string, key: string) {
     setBusy(key);
@@ -138,14 +152,59 @@ export function Settings(p: Props) {
             <ChevronRight size={18} className="shrink-0 text-muted" />
           </Link>
         )}
-        <Section icon={MonitorPlay} title="Output page" description="Load this once as a Web Browser input in vMix, and open it full screen on the projector PC.">
+        <Section icon={MonitorPlay} title="Output page" description="Two outputs: one for the projector in the room, one on green screen for the livestream (a Web Browser input in vMix or OBS, keyed on green).">
           {out ? (
             <>
-              <CopyRow label="Full screen (projector)" value={out} />
-              <CopyRow label="Lower third, transparent background (vMix)" value={`${out}?layout=lower`} />
+              <CopyRow label="In-house: the projector" value={out} />
+              <CopyRow label="Online: the livestream, on green screen (lyrics as a lower third)" value={`${out}/online`} />
+              <CopyRow label="Lower third on a transparent background (advanced)" value={`${out}?layout=lower`} />
               <p className="text-xs text-muted">
-                Set the vMix browser input to 1920 × 1080. Anyone with this link can see what is on screen, so keep it inside the media team.
+                Set the vMix browser input to 1920 × 1080. Anyone with this link can see what is on screen, but only signed-in members of your church can
+                put anything on it.
               </p>
+              {p.isAdmin && (
+                <form
+                  className="rounded-lg bg-surface-2 px-4 py-3"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    void run(
+                      async () => {
+                        const res = await supabase.rpc("set_screen_address", { p_address: screenAddress });
+                        if (!res.error && typeof res.data === "string") {
+                          // Consoles open in this browser switch to it at once.
+                          if (typeof BroadcastChannel !== "undefined") {
+                            const bc = new BroadcastChannel(CONSOLE_CHANNEL);
+                            bc.postMessage({ type: "screen-token", token: res.data } satisfies ConsoleMessage);
+                            bc.close();
+                          }
+                          router.refresh();
+                        }
+                        return res;
+                      },
+                      "Output address saved. Load the new link in vMix and on the projector once; it won't change again unless you change it.",
+                      "address",
+                    );
+                  }}
+                >
+                  <p className="text-sm font-bold">Your own address</p>
+                  <p className="mt-0.5 text-xs text-muted">A name that stays the same, easy to type into vMix: letters, numbers and hyphens.</p>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <span className="flex h-11 min-w-0 flex-1 items-center rounded-full bg-bg pl-4 font-mono text-xs text-muted inset-field">
+                      <span className="shrink-0">{origin}/screen/</span>
+                      <input
+                        value={screenAddress}
+                        onChange={(e) => setScreenAddress(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))}
+                        maxLength={40}
+                        aria-label="Output address"
+                        className="h-full min-w-0 flex-1 bg-transparent pr-4 text-ink outline-none"
+                      />
+                    </span>
+                    <Button type="submit" variant="secondary" loading={busy === "address"} disabled={busy !== null || screenAddress.length < 3 || screenAddress === p.screenToken}>
+                      Save address
+                    </Button>
+                  </div>
+                </form>
+              )}
               <details className="rounded-lg bg-surface-2 px-4 py-3 text-sm">
                 <summary className="cursor-pointer font-semibold">Projector shortcut (always opens full screen)</summary>
                 <div className="mt-3 space-y-3 text-muted">

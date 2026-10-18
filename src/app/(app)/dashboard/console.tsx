@@ -11,6 +11,7 @@ import {
   LoaderCircle,
   Mic,
   Play,
+  Maximize,
   MonitorOff,
   MonitorUp,
   Search,
@@ -34,7 +35,7 @@ import { AUTO_REPEAT_MS, eligible, HOLD_MS, readiness } from "@/lib/live/auto-sh
 import { outbox } from "@/lib/live/outbox";
 import { lastSpokenTranslation, matchSpokenTranslation } from "@/lib/scripture/spoken-translations";
 import { findTranslation, starredFirst, type TranslationInfo } from "@/lib/scripture/translations";
-import { closeProjector, presentOnProjector, useProjectorOpen } from "@/lib/live/present";
+import { closeProjector, fillProjectorScreen, presentOnProjector, useProjectorOpen } from "@/lib/live/present";
 import { CONSOLE_CHANNEL, ScreenSender, type ConsoleMessage } from "@/lib/live/screen";
 import { buildSlides, loadTranslation, shapeOf, stepVerse, versesFor, type Slide, type Translation } from "@/lib/scripture/bible";
 import { formatRef, parseSearch, refKey, type Detection, type VerseRef } from "@/lib/scripture/parser";
@@ -210,7 +211,7 @@ export function Console({ churchId, userId, screenToken, translationId, translat
     setPresentBlocked(result === "blocked");
     syncProjector();
   }
-  const [projectorOpen, syncProjector] = useProjectorOpen();
+  const [projectorOpen, syncProjector, projectorFull] = useProjectorOpen();
   function stopPresenting() {
     closeProjector();
     syncProjector();
@@ -743,6 +744,12 @@ export function Console({ churchId, userId, screenToken, translationId, translat
                     >
                       <ExternalLink size={16} />
                     </a>
+                    {/* The projector window isn't filling its screen (the address bar shows): one click here fixes it. */}
+                    {projectorOpen && !projectorFull && (
+                      <Button size="sm" variant="outline" className="h-10" onClick={fillProjectorScreen} title="The projector window isn't full screen yet. Click to fill it.">
+                        <Maximize size={14} /> Fill projector screen
+                      </Button>
+                    )}
                     {projectorOpen ? (
                       <Button size="sm" variant="secondary" className="h-10" onClick={stopPresenting} title="Close the projector window">
                         <MonitorOff size={14} /> Stop presenting
