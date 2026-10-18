@@ -96,7 +96,14 @@ export function Console({ churchId, userId, screenToken, translationId, translat
   // Everything heard, for translations named aloud ("…in the KJV").
   const textRef = useRef<((text: string) => void) | null>(null);
   const onText = useCallback((text: string) => textRef.current?.(text), []);
-  const live = useLiveService({ churchId, userId, bible, silenceEndMinutes, onHeard, onCommand, onText });
+  // The last verse on screen, so a passage read aloud is followed from it.
+  const currentVerse = useCallback(() => {
+    const sel = selectionRef.current;
+    if (!sel) return null;
+    const lines = sel.slides[sel.index]?.lines ?? [];
+    return { book: sel.ref.book, chapter: sel.ref.chapter, verse: lines[lines.length - 1]?.verse ?? sel.ref.verseStart ?? 1 };
+  }, []);
+  const live = useLiveService({ churchId, userId, bible, silenceEndMinutes, onHeard, onCommand, onText, currentVerse });
 
   // ---- Translation ----------------------------------------------------------
   // The church's default (Settings), unless this computer has picked another.
@@ -1165,6 +1172,7 @@ const SuggestionCard = memo(
             <>
               <SignalBars level={conf.level} label={conf.label} />
               {s.kind === "followup" && <Chip>Follow-up</Chip>}
+              {s.kind === "quote" && <Chip>From its words</Chip>}
             </>
           )}
           <Button size="sm" onClick={show} className="ml-auto">

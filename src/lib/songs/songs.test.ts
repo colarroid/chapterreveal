@@ -104,7 +104,8 @@ describe.skipIf(!existsSync(DIR))("real VideoPsalm files", () => {
     const r = await read("CLC 1.json");
     expect(r.songs.length).toBeGreaterThan(2000);
     expect(r.songs.every((s) => s.title && s.slides.length)).toBe(true);
-  });
+    // A big file: well under a second alone, slower while the whole suite runs.
+  }, 20_000);
 
   it("opens unlocked .vpc songbooks and refuses the locked one", async () => {
     expect((await read("CONFESSION.vpc")).songs.length).toBeGreaterThan(0);

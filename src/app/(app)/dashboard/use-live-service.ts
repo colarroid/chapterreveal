@@ -4,8 +4,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { listInputs, startCapture, unlockInputLabels, type AudioInput, type Capture } from "@/lib/live/audio";
 import { outbox } from "@/lib/live/outbox";
 import { Transcriber, type SessionRequest, type TranscriberStatus } from "@/lib/live/transcriber";
-import { shapeOf, type Translation } from "@/lib/scripture/bible";
+import { loadTranslation, shapeOf, type Translation } from "@/lib/scripture/bible";
 import { detectWithCarry, refKey, unfinishedTail, type Detection, type ParseContext, type VerseRef } from "@/lib/scripture/parser";
+import { VerseTextIndex, type VerseHit } from "@/lib/scripture/verse-text";
+import { BUILT_IN_TRANSLATIONS, findTranslation } from "@/lib/scripture/translations";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { useLeaveWarning } from "@/lib/use-leave-warning";
 
@@ -63,9 +65,11 @@ interface Options {
   onText?: (text: string, final: boolean, lagMs: number) => void;
   /** Hints for the transcriber, read when listening starts. */
   session?: () => SessionRequest;
+  /** The verse on screen now, so a reading aloud is followed from it. */
+  currentVerse?: () => { book: number; chapter: number; verse: number } | null;
 }
 
-export function useLiveService({ churchId, userId, bible, silenceEndMinutes, onHeard, onCommand, onText, session }: Options) {
+export function useLiveService({ churchId, userId, bible, silenceEndMinutes, onHeard, onCommand, onText, session, currentVerse }: Options) {
   const [phase, setPhase] = useState<Phase>("idle");
   const [status, setStatus] = useState<TranscriberStatus>("closed");
   const [error, setError] = useState("");
@@ -90,6 +94,12 @@ export function useLiveService({ churchId, userId, bible, silenceEndMinutes, onH
   // The end of the last stretch when it stopped mid-reference ("…Psalm
   // ninety"), read again with the next one ("one…") so it comes out whole.
   const carryRef = useRef<string | null>(null);
+  // Verses recognised from their words (lib/scripture/verse-text): the
+  // translation on screen, and the KJV too, the one most quoted from memory.
+  const verseIndexes = useRef<VerseTextIndex[]>([]);
+  const lastFinal = useRef("");
+  const lastQuote = useRef({ key: "", at: 0 });
+  const currentVerseRef = useRef(currentVerse);
   // Audio seconds from earlier parts of a reopened service.
   const audioBaseRef = useRef(0);
   const seqRef = useRef(0);
@@ -110,11 +120,65 @@ export function useLiveService({ churchId, userId, bible, silenceEndMinutes, onH
   const sessionRef = useRef(session);
   useEffect(() => {
     bibleRef.current = bible;
+    currentVerseRef.current = currentVerse;
     onHeardRef.current = onHeard;
     onCommandRef.current = onCommand;
     onTextRef.current = onText;
     sessionRef.current = session;
-  }, [bible, onHeard, onCommand, onText, session]);
+  }, [bible, onHeard, onCommand, onText, session, currentVerse]);
+
+  // Index the translation's words for recognising verses from what's said,
+  // and the KJV's when another translation is on screen. Built in the
+  // background (about a second); recognition starts once they're ready.
+  useEffect(() => {
+    if (!bible) return;
+    let live = true;
+    const build = async () => {
+      const own = await VerseTextIndex.build(bible);
+      if (!live) return;
+      verseIndexes.current = [own];
+      if (bible.id === "kjv") return;
+      const kjv = await loadTranslation(findTranslation(BUILT_IN_TRANSLATIONS, "kjv")).catch(() => null);
+      if (!kjv || !live) return;
+      const kjvIndex = await VerseTextIndex.build(kjv);
+      if (live) verseIndexes.current = [own, kjvIndex];
+    };
+    void build();
+    return () => {
+      live = false;
+    };
+  }, [bible]);
+
+  /**
+   * A verse recognised from its words, when the text named no reference:
+   * a reading aloud (followed from the verse on screen, or the chapter last
+   * named) goes up by itself; a quotation from anywhere else is suggested.
+   */
+  const quoteDetection = useCallback((text: string): Detection | null => {
+    if (!verseIndexes.current.length) return null;
+    const ctx = ctxRef.current;
+    const near = currentVerseRef.current?.() ?? (ctx.book !== undefined && ctx.chapter !== undefined ? { book: ctx.book, chapter: ctx.chapter } : null);
+    const heard = `${lastFinal.current} ${text}`;
+    let hit: VerseHit | null = null;
+    for (const index of verseIndexes.current) {
+      const h = index.match(heard, near);
+      if (h?.confident && (!hit || h.score > hit.score)) hit = h;
+    }
+    if (!hit) return null;
+    const key = `${hit.book}:${hit.chapter}:${hit.verse}`;
+    const now = Date.now();
+    if (lastQuote.current.key === key && now - lastQuote.current.at < 30_000) return null;
+    lastQuote.current = { key, at: now };
+    const inPassage = near !== null && near.book === hit.book && near.chapter === hit.chapter;
+    return {
+      ref: { book: hit.book, chapter: hit.chapter, verseStart: hit.verse },
+      start: 0,
+      end: text.length,
+      // Following the passage in hand: safe to show. Anywhere else: a suggestion.
+      confidence: inPassage ? 0.9 : 0.7,
+      kind: "quote",
+    };
+  }, []);
 
   // Voice commands are acted on from the live (partial) text, the moment
   // they're heard. The partial grows and gets revised, so count how many
@@ -273,8 +337,14 @@ export function useLiveService({ churchId, userId, bible, silenceEndMinutes, onH
       // The next stretch of speech starts counting from zero.
       commandsFired.current = 0;
       const res = b ? detectWithCarry(text, shapeOf(b), ctxRef.current, carryRef.current) : { detections: [], context: ctxRef.current };
+      // No reference named: maybe scripture read or quoted from memory.
+      if (b && !res.detections.length) {
+        const quote = quoteDetection(text);
+        if (quote) res.detections = [quote];
+      }
       ctxRef.current = res.context;
       carryRef.current = unfinishedTail(text);
+      lastFinal.current = text;
       if (res.detections.length) onHeardRef.current?.(res.detections, text, true, lagMs);
       setSegments((p) => [...p.slice(-MAX_SEGMENTS_SHOWN + 1), { seq, text, detections: res.detections }]);
       addSuggestions(res.detections, seq);
@@ -292,7 +362,7 @@ export function useLiveService({ churchId, userId, bible, silenceEndMinutes, onH
       }
       segStart.current = 0;
     },
-    [addSuggestions, churchId],
+    [addSuggestions, churchId, quoteDetection],
   );
 
   // ---- Start and end -------------------------------------------------------
@@ -349,6 +419,7 @@ export function useLiveService({ churchId, userId, bible, silenceEndMinutes, onH
     audioBaseRef.current = resumedAudio;
     ctxRef.current = {};
     carryRef.current = null;
+    lastFinal.current = "";
     lastSpeech.current = Date.now();
     setServiceId(svc.id);
     setStartedAt(startRef.current);

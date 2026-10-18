@@ -24,7 +24,8 @@ export interface Detection {
   end: number;
   /** 0 to 1. Clear chapter-and-verse citations score highest. */
   confidence: number;
-  kind: "explicit" | "followup";
+  /** "quote": recognised from the verse's own words, no reference said. */
+  kind: "explicit" | "followup" | "quote";
 }
 
 export interface ParseContext {
