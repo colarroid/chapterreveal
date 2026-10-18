@@ -23,6 +23,10 @@ self.addEventListener("activate", (event) => {
   event.waitUntil(
     (async () => {
       for (const name of await caches.keys()) if (name.startsWith("scripture-") && !KEEP.includes(name)) await caches.delete(name);
+      // Licensed Bibles were once kept here as plain text from a public
+      // address; the encrypted ones (/api/bible) replace them.
+      const bibles = await caches.open(BIBLES);
+      for (const req of await bibles.keys()) if (req.url.includes("/storage/v1/object/public/bibles/")) await bibles.delete(req);
       await self.clients.claim();
     })(),
   );
@@ -33,9 +37,11 @@ self.addEventListener("message", (event) => {
   if (event.data === "sign-out") event.waitUntil(caches.delete(PAGES));
 });
 
+// Built-in Bibles (plain, public domain) and licensed ones (/api/bible:
+// encrypted for the church, so they're safe to keep).
 const isBible = (url) =>
-  (url.origin === self.location.origin && url.pathname.startsWith("/bibles/") && url.pathname.endsWith(".json")) ||
-  url.pathname.includes("/storage/v1/object/public/bibles/");
+  url.origin === self.location.origin &&
+  ((url.pathname.startsWith("/bibles/") && url.pathname.endsWith(".json")) || url.pathname.startsWith("/api/bible/"));
 
 const isOfflinePage = (url) => url.origin === self.location.origin && /^\/(dashboard|songs|screen\/[^/]+)\/?$/.test(url.pathname);
 
@@ -52,7 +58,8 @@ self.addEventListener("fetch", (event) => {
 async function staleWhileRevalidate(event, cacheName, key) {
   const cache = await caches.open(cacheName);
   const hit = await cache.match(key);
-  const fresh = fetch(key, { mode: "cors", credentials: "omit" })
+  // Same site: the sign-in cookie goes along, which /api/bible needs.
+  const fresh = fetch(key, { credentials: "same-origin" })
     .then((res) => {
       if (res.ok) void cache.put(key, res.clone()).then(() => dropOldVersions(cache, key));
       return res;
@@ -85,10 +92,10 @@ async function trim(cache, max) {
   for (const k of keys.slice(0, Math.max(0, keys.length - max))) await cache.delete(k);
 }
 
-// An added translation re-uploaded on the admin site gets a new file
-// (<id>/v2.json); the old version is never needed again.
+// An added translation re-uploaded on the admin site gets a new version
+// (/api/bible/<id>/v2); the old one is never needed again.
 async function dropOldVersions(cache, key) {
-  const m = key.match(/^(.*\/bibles\/[^/]+\/)v\d+\.json$/);
+  const m = key.match(/^(.*\/api\/bible\/[^/]+\/)v\d+$/);
   if (!m) return;
   for (const k of await cache.keys()) if (k.url !== key && k.url.startsWith(m[1])) await cache.delete(k);
 }

@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import { forgetOfflinePages, OfflineChip } from "@/components/offline";
 import { ThemeToggle } from "@/components/theme";
 import { Logo } from "@/components/ui";
+import { forgetBibleKey } from "@/lib/scripture/bible-crypto";
 import { forgetSongs } from "@/lib/songs/store";
 import { supabaseBrowser } from "@/lib/supabase/client";
 
@@ -77,6 +78,7 @@ function AccountMenu({ person, churchName }: { person: Person; churchName: strin
     await supabaseBrowser().auth.signOut();
     forgetOfflinePages();
     forgetSongs();
+    forgetBibleKey();
     router.replace("/login");
     router.refresh();
   }

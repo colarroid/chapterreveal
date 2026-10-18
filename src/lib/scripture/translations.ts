@@ -10,6 +10,8 @@ export interface TranslationInfo {
   name: string;
   /** Where the text is. Built-in translations are served by the app itself. */
   url: string;
+  /** Licensed (added on the admin site): sent encrypted for this church (/api/bible). */
+  encrypted?: boolean;
   /** Credit line shown on the projector, when the licence asks for one. */
   copyright?: string;
 }
@@ -38,13 +40,14 @@ export interface TranslationRow {
   version: number;
 }
 
-/** The public URL of an added translation's text. */
+/** Where an added (licensed) translation's text comes from. */
 export function storedBibleUrl(id: string, version: number): string {
-  return `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/bibles/${id}/v${version}.json`;
+  // Through the app, signed in and encrypted: the bucket is private (migration 0022).
+  return `/api/bible/${id}/v${version}`;
 }
 
 export function fromRow(r: TranslationRow): TranslationInfo {
-  return { id: r.id, short: r.short, name: r.name, url: storedBibleUrl(r.id, r.version), copyright: r.copyright || undefined };
+  return { id: r.id, short: r.short, name: r.name, url: storedBibleUrl(r.id, r.version), copyright: r.copyright || undefined, encrypted: true };
 }
 
 /** A row of translation_order: where the admin site put a translation, and whether it's hidden. */

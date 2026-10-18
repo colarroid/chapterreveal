@@ -2,6 +2,7 @@ import { BOOKS } from "./books";
 import { formatRef, type BibleShape, type VerseRef } from "./parser";
 import type { DisplayTheme } from "@/lib/display/theme";
 import type { TranslationInfo } from "./translations";
+import { decryptBible } from "./bible-crypto";
 
 /** A whole translation, indexed [book][chapter - 1][verse - 1]. */
 export interface Translation {
@@ -169,6 +170,20 @@ export function bookName(b: number): string {
 
 const cache = new Map<string, Promise<Translation>>();
 
+/**
+ * Licensed Bibles used to come straight from a public bucket and were kept
+ * here as plain text. Those copies go: the encrypted ones replace them.
+ */
+let forgotPlain = false;
+async function forgetPlainLicensedCopies() {
+  if (forgotPlain || typeof caches === "undefined") return;
+  forgotPlain = true;
+  try {
+    const store = await caches.open(BIBLE_CACHE);
+    for (const req of await store.keys()) if (req.url.includes("/storage/v1/object/public/bibles/")) await store.delete(req);
+  } catch {}
+}
+
 /** The browser's offline store for Bibles. Same name as BIBLES in public/sw.js. */
 export const BIBLE_CACHE = "scripture-bibles";
 
@@ -198,9 +213,12 @@ async function fetchBible(url: string): Promise<Response> {
 export function loadTranslation(info: TranslationInfo): Promise<Translation> {
   let p = cache.get(info.url);
   if (!p) {
+    void forgetPlainLicensedCopies();
     p = fetchBible(info.url)
-      .then((r) => {
+      .then(async (r) => {
         if (!r.ok) throw new Error(`Could not load ${info.id}`);
+        // Licensed text arrives (and is kept offline) encrypted for this church.
+        if (info.encrypted) return JSON.parse(await decryptBible(await r.arrayBuffer())) as Translation;
         return r.json() as Promise<Translation>;
       })
       .then((t) => ({ ...t, id: info.id, short: info.short, copyright: info.copyright }));
