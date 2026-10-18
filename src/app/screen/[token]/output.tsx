@@ -21,6 +21,8 @@ export function OutputScreen({
   layout,
   present = false,
   online = false,
+  only,
+  chroma,
 }: {
   token: string;
   layout: SlideLayout;
@@ -31,6 +33,10 @@ export function OutputScreen({
    * camera shot stays visible, scripture full screen.
    */
   online?: boolean;
+  /** Only scripture or only lyrics; blank while the other is on screen (separate vMix/OBS inputs). */
+  only?: "scripture" | "song";
+  /** A key colour behind everything (lower thirds on green). */
+  chroma?: string;
 }) {
   const [slide, setSlide] = useState<Slide | null>(null);
   const [visible, setVisible] = useState(false);
@@ -80,11 +86,12 @@ export function OutputScreen({
       document.body.style.background = "transparent";
     }
     // The online output is green to the very edge, blank screen included.
-    if (online) {
-      document.documentElement.style.background = CHROMA_GREEN;
-      document.body.style.background = CHROMA_GREEN;
+    const key = online ? CHROMA_GREEN : chroma;
+    if (key) {
+      document.documentElement.style.background = key;
+      document.body.style.background = key;
     }
-  }, [layout, online]);
+  }, [layout, online, chroma]);
 
   // No cursor on the projector, except while it needs that one click.
   useEffect(() => {
@@ -99,7 +106,10 @@ export function OutputScreen({
       if (replacedRef.current) return;
       if (!p || p.at <= latest.current) return;
       latest.current = p.at;
-      if (p.slide) {
+      if (p.slide && only && (p.slide.kind === "song" ? "song" : "scripture") !== only) {
+        // The other kind went up: this output goes blank.
+        setVisible(false);
+      } else if (p.slide) {
         // The look comes with the slide; only safe colours and this app's own
         // uploaded backgrounds get through.
         const base = p.slide.kind === "song" ? DEFAULT_DISPLAY.songs : DEFAULT_DISPLAY.scripture;
@@ -157,7 +167,7 @@ export function OutputScreen({
       clearInterval(poll);
       void supabase.removeChannel(channel);
     };
-  }, [token]);
+  }, [token, only]);
 
   return (
     <div className="fixed inset-0">
@@ -165,7 +175,7 @@ export function OutputScreen({
         slide={slide}
         layout={online ? (slide?.kind === "song" ? "lower" : "full") : layout}
         visible={visible}
-        chroma={online ? CHROMA_GREEN : undefined}
+        chroma={online ? CHROMA_GREEN : chroma}
       />
       {/* A dot the operator can see on the projector; invisible to the room from a distance. */}
       {lost && !replaced && <div className="absolute right-3 bottom-3 h-2 w-2 rounded-full bg-warning" title="Reconnecting" />}

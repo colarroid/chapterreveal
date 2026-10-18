@@ -81,13 +81,16 @@ export const SlideView = memo(function SlideView({
 
   // The lower third for vMix keeps its own look: white words on a dark band.
   const lower = layout === "lower";
-  const textColor = lower ? "#ffffff" : t.textColor;
-  const accent = lower ? "#1ed760" : t.accentColor;
+  // On a key colour (green screen) nothing may be green: the keyer removes
+  // green pixels wherever they are, so the reference would vanish. Words and
+  // reference are white there, with a shadow to stay readable over video.
+  const textColor = lower || chroma ? "#ffffff" : t.textColor;
+  const accent = chroma ? "#ffffff" : lower ? "#1ed760" : t.accentColor;
   const words: CSSProperties = {
     fontFamily: font.family,
     fontWeight: font.weight,
     textTransform: t.uppercase ? "uppercase" : undefined,
-    textShadow: t.shadow && !lower ? "0 0.06em 0.3em rgba(0,0,0,0.7)" : undefined,
+    textShadow: chroma && !lower ? "0 0.04em 0.25em rgba(0,0,0,0.85)" : t.shadow && !lower ? "0 0.06em 0.3em rgba(0,0,0,0.7)" : undefined,
   };
   const scale = lower ? 1 : t.scale;
   const small = (n: number) => `${(lower ? n * 0.75 : n).toFixed(2)}cqw`;
@@ -104,7 +107,7 @@ export const SlideView = memo(function SlideView({
           ))}
         </p>
         {slide.copyright && (
-          <p className="mt-[1.6cqw] font-sans" style={{ fontSize: small(1.1), opacity: 0.45 }}>
+          <p className="mt-[1.6cqw] font-sans" style={{ fontSize: small(1.1), opacity: chroma ? 1 : 0.45 }}>
             {slide.copyright}
           </p>
         )}
@@ -124,12 +127,16 @@ export const SlideView = memo(function SlideView({
               </span>
             ))}
           </p>
-          <p className="mt-[1.6cqw] font-sans font-semibold tracking-wide" style={{ color: accent, fontSize: small(2) }}>
-            {slide.label} <span className="ml-[0.6em] font-medium opacity-60" style={{ color: textColor }}>{slide.translation}</span>
+          <p
+            className="mt-[1.6cqw] font-sans font-semibold tracking-wide"
+            style={{ color: accent, fontSize: small(2), textShadow: chroma && !lower ? "0 0.04em 0.25em rgba(0,0,0,0.85)" : undefined }}
+          >
+            {/* Solid on green: see-through text comes out green-tinted once keyed. */}
+            {slide.label} <span className={`ml-[0.6em] font-medium ${chroma ? "" : "opacity-60"}`} style={{ color: textColor }}>{slide.translation}</span>
           </p>
           {slide.copyright && (
             // Small, but the licence asks for it to be readable.
-            <p className="mt-[0.8cqw] font-sans" style={{ fontSize: small(1.1), opacity: 0.45 }}>
+            <p className="mt-[0.8cqw] font-sans" style={{ fontSize: small(1.1), opacity: chroma ? 1 : 0.45 }}>
               {slide.copyright}
             </p>
           )}

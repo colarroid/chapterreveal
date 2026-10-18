@@ -152,15 +152,17 @@ export function Settings(p: Props) {
             <ChevronRight size={18} className="shrink-0 text-muted" />
           </Link>
         )}
-        <Section icon={MonitorPlay} title="Output page" description="Two outputs: one for the projector in the room, one on green screen for the livestream (a Web Browser input in vMix or OBS, keyed on green).">
+        <Section icon={MonitorPlay} title="Output page" description="The projector link shows everything. For the livestream, add the scripture and lyrics links as separate Web Browser inputs in vMix or OBS; key the Lower Third ones on green.">
           {out ? (
             <>
-              <CopyRow label="In-house: the projector" value={out} />
-              <CopyRow label="Online: the livestream, on green screen (lyrics as a lower third)" value={`${out}/online`} />
-              <CopyRow label="Lower third on a transparent background (advanced)" value={`${out}?layout=lower`} />
+              <CopyRow label="Projector: scripture and lyrics (what Present opens)" value={out} />
+              <CopyRow label="Scripture Projection Full Screen" value={`${out}/scripture`} />
+              <CopyRow label="Scripture Projection Lower Third (Green background)" value={`${out}/scripture/lower`} />
+              <CopyRow label="Lyrics Projection Full Screen" value={`${out}/lyrics`} />
+              <CopyRow label="Lyrics Projection Lower Third (Green background)" value={`${out}/lyrics/lower`} />
               <p className="text-xs text-muted">
-                Set the vMix browser input to 1920 × 1080. Anyone with this link can see what is on screen, but only signed-in members of your church can
-                put anything on it.
+                Set browser inputs to 1920 × 1080. Each scripture or lyrics output goes blank while the other kind is on screen. Anyone with these links
+                can see what is on screen, but only signed-in members of your church can put anything on it.
               </p>
               {p.isAdmin && (
                 <form
