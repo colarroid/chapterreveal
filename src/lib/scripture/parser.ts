@@ -442,3 +442,40 @@ export function formatRef(r: VerseRef): string {
   if (r.verseEnd === undefined || r.verseEnd === r.verseStart) return `${name} ${r.chapter}:${r.verseStart}`;
   return `${name} ${r.chapter}:${r.verseStart}-${r.verseEnd}`;
 }
+
+// Words a reference can continue after: a number (the verse may follow the
+// chapter: "Isaiah forty two" | "nine"), "chapter", "verse", "and", "to"...
+const OPEN_ENDING =
+  /^(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fourty|fifty|sixty|seventy|eighty|ninety|hundred|chapter|chapters|verse|verses|and|to|through|colon|\d+)$/;
+
+/**
+ * The transcriber cuts a stretch of speech at a pause, sometimes mid-number:
+ * "…in Psalm ninety" | "one, our psalm of protection". When a stretch ends
+ * like that, its last words, to be read again with the next stretch so the
+ * reference comes out whole (Psalm 91, not Psalm 90). Null when it ended
+ * cleanly, at a full stop or on a word that can't continue a reference.
+ */
+export function unfinishedTail(text: string): string | null {
+  const trimmed = text.trim();
+  if (!trimmed || /[.!?]$/.test(trimmed)) return null;
+  const words = trimmed.split(/\s+/);
+  const last = words[words.length - 1].toLowerCase().replace(/[^a-z0-9]/g, "");
+  return OPEN_ENDING.test(last) ? words.slice(-8).join(" ") : null;
+}
+
+/**
+ * Detects in `text` read after `carry` (the previous stretch's unfinished
+ * tail). Offsets are moved back into `text`; references wholly inside the
+ * carried words were already reported with the previous stretch.
+ */
+export function detectWithCarry(text: string, shape: BibleShape, ctx: ParseContext, carry: string | null): { detections: Detection[]; context: ParseContext } {
+  if (!carry) return detect(text, shape, ctx);
+  const shift = carry.length + 1;
+  const res = detect(`${carry} ${text}`, shape, ctx);
+  return {
+    context: res.context,
+    detections: res.detections
+      .filter((d) => d.end > shift)
+      .map((d) => ({ ...d, start: Math.max(0, d.start - shift), end: d.end - shift })),
+  };
+}

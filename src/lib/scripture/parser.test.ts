@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { buildSlides, shapeOf, stepVerse, type Translation } from "./bible";
-import { detect, formatRef, parseSearch, type ParseContext } from "./parser";
+import { detect, detectWithCarry, formatRef, parseSearch, unfinishedTail, type ParseContext } from "./parser";
 import { tokenize } from "./tokenize";
 
 const kjv: Translation = JSON.parse(fs.readFileSync(path.join(__dirname, "../../../public/bibles/kjv.json"), "utf8"));
@@ -193,5 +193,43 @@ describe("slides and stepping", () => {
     expect(stepVerse(kjv, 42, 3, 36, 1)).toEqual({ book: 42, chapter: 4, verseStart: 1, verseEnd: 1 });
     expect(stepVerse(kjv, 42, 4, 1, -1)).toEqual({ book: 42, chapter: 3, verseStart: 36, verseEnd: 36 });
     expect(stepVerse(kjv, 0, 1, 1, -1)).toBeNull();
+  });
+});
+
+describe("references split across two stretches of speech", () => {
+  // Reads stretches one after another, as the live console does.
+  const stream = (...stretches: string[]) => {
+    let ctx: ParseContext = {};
+    let carry: string | null = null;
+    return stretches.map((text) => {
+      const res = detectWithCarry(text, bible, ctx, carry);
+      ctx = res.context;
+      carry = unfinishedTail(text);
+      return res.detections.map((d) => formatRef(d.ref));
+    });
+  };
+
+  it("joins a number cut at a pause (from a real service)", () => {
+    const [first, second] = stream("We'll be declaring the word of God ehm in Psalm ninety", "one our psalm of protection");
+    expect(first).toEqual(["Psalm 90"]);
+    expect(second).toEqual(["Psalm 91"]);
+  });
+
+  it("joins a chapter and verse cut after 'verse'", () => {
+    expect(stream("turn with me to John chapter three verse", "sixteen for God so loved")[1]).toEqual(["John 3:16"]);
+  });
+
+  it("joins a verse said after the chapter, at a pause (from a real service)", () => {
+    expect(stream("Isaiah forty two", "nine.")[1]).toEqual(["Isaiah 42:9"]);
+  });
+
+  it("leaves a stretch that ended cleanly alone", () => {
+    expect(unfinishedTail("Read Romans eight.")).toBeNull();
+    expect(unfinishedTail("God is good all the time")).toBeNull();
+    expect(stream("Romans eight twenty eight.", "one more thing")[1]).toEqual([]);
+  });
+
+  it("doesn't report the same reference again from the carried words", () => {
+    expect(stream("open to Genesis one verse one and", "let's pray")[1]).toEqual([]);
   });
 });

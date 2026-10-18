@@ -5,7 +5,7 @@ import { listInputs, startCapture, unlockInputLabels, type AudioInput, type Capt
 import { outbox } from "@/lib/live/outbox";
 import { Transcriber, type SessionRequest, type TranscriberStatus } from "@/lib/live/transcriber";
 import { shapeOf, type Translation } from "@/lib/scripture/bible";
-import { detect, refKey, type Detection, type ParseContext, type VerseRef } from "@/lib/scripture/parser";
+import { detectWithCarry, refKey, unfinishedTail, type Detection, type ParseContext, type VerseRef } from "@/lib/scripture/parser";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { useLeaveWarning } from "@/lib/use-leave-warning";
 
@@ -34,6 +34,8 @@ const MAX_SUGGESTIONS = 40;
 const MAX_SEGMENTS_SHOWN = 60;
 const SILENT_RMS = 0.003;
 const WARN_AFTER_MS = 10_000;
+/** Starting again within this long of the last service ending (same day) carries it on. */
+const RESUME_WITHIN_MS = 60 * 60_000;
 const DEVICE_KEY = "scripture.inputDevice";
 
 /**
@@ -85,6 +87,11 @@ export function useLiveService({ churchId, userId, bible, silenceEndMinutes, onH
   // Live objects and values read inside callbacks.
   const bibleRef = useRef(bible);
   const ctxRef = useRef<ParseContext>({});
+  // The end of the last stretch when it stopped mid-reference ("…Psalm
+  // ninety"), read again with the next one ("one…") so it comes out whole.
+  const carryRef = useRef<string | null>(null);
+  // Audio seconds from earlier parts of a reopened service.
+  const audioBaseRef = useRef(0);
   const seqRef = useRef(0);
   const serviceRef = useRef<string | null>(null);
   const startRef = useRef(0);
@@ -249,7 +256,7 @@ export function useLiveService({ churchId, userId, bible, silenceEndMinutes, onH
     lastSpeech.current = Date.now();
     fireCommands(text);
     onTextRef.current?.(text, false, lagMs);
-    const dets = b ? detect(text, shapeOf(b), ctxRef.current).detections : [];
+    const dets = b ? detectWithCarry(text, shapeOf(b), ctxRef.current, carryRef.current).detections : [];
     // Auto mode acts before React renders anything.
     if (dets.length) onHeardRef.current?.(dets, text, false, lagMs);
     setPartial({ text, detections: dets });
@@ -265,8 +272,9 @@ export function useLiveService({ churchId, userId, bible, silenceEndMinutes, onH
       onTextRef.current?.(text, true, lagMs);
       // The next stretch of speech starts counting from zero.
       commandsFired.current = 0;
-      const res = b ? detect(text, shapeOf(b), ctxRef.current) : { detections: [], context: ctxRef.current };
+      const res = b ? detectWithCarry(text, shapeOf(b), ctxRef.current, carryRef.current) : { detections: [], context: ctxRef.current };
       ctxRef.current = res.context;
+      carryRef.current = unfinishedTail(text);
       if (res.detections.length) onHeardRef.current?.(res.detections, text, true, lagMs);
       setSegments((p) => [...p.slice(-MAX_SEGMENTS_SHOWN + 1), { seq, text, detections: res.detections }]);
       addSuggestions(res.detections, seq);
@@ -296,21 +304,51 @@ export function useLiveService({ churchId, userId, bible, silenceEndMinutes, onH
     setPhase("starting");
     const supabase = supabaseBrowser();
 
-    const { data: svc, error: svcErr } = await supabase
+    // Stopping and starting again during the same service (a restart, a
+    // switch between Scriptures and Song Lyrics) carries on the same History
+    // entry: the church's last service is reopened if it ended within the
+    // hour, today. Otherwise a new one starts.
+    let svc: { id: string; started_at: string } | null = null;
+    let resumed = false;
+    let resumedSeq = 0;
+    let resumedAudio = 0;
+    const { data: last } = await supabase
       .from("services")
-      .insert({ church_id: churchId, started_by: userId })
-      .select("id, started_at")
-      .single();
-    if (svcErr || !svc) {
-      setError(svcErr?.message ?? "Could not start the service.");
-      setPhase("idle");
-      return;
+      .select("id, started_at, ended_at, audio_seconds")
+      .eq("church_id", churchId)
+      .order("started_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const endedAt = last?.ended_at ? new Date(last.ended_at) : null;
+    if (last && endedAt && Date.now() - endedAt.getTime() < RESUME_WITHIN_MS && endedAt.toDateString() === new Date().toDateString()) {
+      const [{ error: reopenErr }, { data: lastSeg }] = await Promise.all([
+        supabase.from("services").update({ ended_at: null, end_reason: null }).eq("id", last.id),
+        supabase.from("transcript_segments").select("seq").eq("service_id", last.id).order("seq", { ascending: false }).limit(1).maybeSingle(),
+      ]);
+      if (!reopenErr) {
+        svc = last;
+        resumed = true;
+        resumedSeq = lastSeg?.seq ?? 0;
+        resumedAudio = last.audio_seconds ?? 0;
+      }
+    }
+    if (!svc) {
+      const { data, error: svcErr } = await supabase.from("services").insert({ church_id: churchId, started_by: userId }).select("id, started_at").single();
+      if (svcErr || !data) {
+        setError(svcErr?.message ?? "Could not start the service.");
+        setPhase("idle");
+        return;
+      }
+      svc = data;
     }
 
     serviceRef.current = svc.id;
-    startRef.current = Date.now();
-    seqRef.current = 0;
+    // Times in the transcript count from the service's first start.
+    startRef.current = resumed ? new Date(svc.started_at).getTime() : Date.now();
+    seqRef.current = resumedSeq;
+    audioBaseRef.current = resumedAudio;
     ctxRef.current = {};
+    carryRef.current = null;
     lastSpeech.current = Date.now();
     setServiceId(svc.id);
     setStartedAt(startRef.current);
@@ -367,7 +405,7 @@ export function useLiveService({ churchId, userId, bible, silenceEndMinutes, onH
       outbox(supabaseBrowser()).updateService(service, {
         ended_at: new Date().toISOString(),
         end_reason: reason,
-        audio_seconds: Math.round(transcriber.current?.audioSeconds ?? 0),
+        audio_seconds: Math.round(audioBaseRef.current + (transcriber.current?.audioSeconds ?? 0)),
       });
       transcriber.current = null;
       serviceRef.current = null;
@@ -393,10 +431,12 @@ export function useLiveService({ churchId, userId, bible, silenceEndMinutes, onH
     const usage = setInterval(() => {
       const service = serviceRef.current;
       if (!service || !transcriber.current) return;
+      // .then() sends it: a Supabase query does nothing until it's awaited.
       void supabaseBrowser()
         .from("services")
-        .update({ audio_seconds: Math.round(transcriber.current.audioSeconds) })
-        .eq("id", service);
+        .update({ audio_seconds: Math.round(audioBaseRef.current + transcriber.current.audioSeconds) })
+        .eq("id", service)
+        .then(() => {});
     }, 30_000);
     const silence = setInterval(() => {
       if (Date.now() - lastSpeech.current > silenceEndMinutes * 60_000) void endRef.current("silence");
@@ -410,12 +450,23 @@ export function useLiveService({ churchId, userId, bible, silenceEndMinutes, onH
   // Ask before a refresh or close while a service is starting, live or ending.
   useLeaveWarning(phase !== "idle");
 
-  // Stop everything if the console unmounts mid-service.
+  // Stop everything if the console unmounts mid-service (switching between
+  // Scriptures and Song Lyrics, say), and close the service: otherwise it
+  // stays "Live now" until the History page tidies it up.
   useEffect(
     () => () => {
       capture.current?.stop();
       testCapture.current?.stop();
       transcriber.current?.stop();
+      const service = serviceRef.current;
+      if (service) {
+        outbox(supabaseBrowser()).updateService(service, {
+          ended_at: new Date().toISOString(),
+          end_reason: "abandoned",
+          audio_seconds: Math.round(audioBaseRef.current + (transcriber.current?.audioSeconds ?? 0)),
+        });
+        serviceRef.current = null;
+      }
     },
     [],
   );
