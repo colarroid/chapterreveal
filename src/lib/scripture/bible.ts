@@ -79,8 +79,14 @@ export interface Slide {
   lines: { verse: number; text: string }[];
   translation: string;
   copyright?: string;
-  /** Song lyrics: lines shown as written, no verse numbers or reference. */
-  kind?: "song";
+  /**
+   * What it is; scripture when unset. "song": lyrics, lines as written.
+   * "text": a text slide (announcement), lines as written. "image": a
+   * picture slide, `image` filling the screen.
+   */
+  kind?: "song" | "text" | "image";
+  /** Picture slides: the picture (this app's own storage only). */
+  image?: string;
   /** How the output draws it; added by the console as it sends the slide. */
   theme?: DisplayTheme;
 }

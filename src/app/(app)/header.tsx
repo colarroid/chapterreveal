@@ -1,6 +1,6 @@
 "use client";
 
-import { BookOpen, History, LoaderCircle, LogOut, Music, Settings, SunMoon, type LucideIcon } from "lucide-react";
+import { BookOpen, History, LoaderCircle, LogOut, Music, Presentation, Settings, SunMoon, type LucideIcon } from "lucide-react";
 import Link, { useLinkStatus } from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -15,6 +15,7 @@ export const HEADER_ACTIONS_ID = "header-actions";
 const NAV = [
   { href: "/dashboard", label: "Scriptures", icon: BookOpen },
   { href: "/songs", label: "Song Lyrics", icon: Music },
+  { href: "/slides", label: "Slides", icon: Presentation },
 ];
 
 // Everything that is not a live view lives in the account menu.

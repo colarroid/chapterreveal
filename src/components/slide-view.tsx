@@ -96,7 +96,7 @@ export const SlideView = memo(function SlideView({
   const small = (n: number) => `${(lower ? n * 0.75 : n).toFixed(2)}cqw`;
 
   const body =
-    slide?.kind === "song" ? (
+    slide?.kind === "song" || slide?.kind === "text" ? (
       // Lyrics: one line per line, larger, nothing else but the credit.
       <>
         <p className="leading-[1.25] text-balance" style={{ ...words, fontSize: `${songSize(chars, slide.lines.length, layout) * scale}cqw` }}>
@@ -143,6 +143,18 @@ export const SlideView = memo(function SlideView({
         </>
       )
     );
+
+  if (slide?.kind === "image" && slide.image && !lower) {
+    // A picture slide fills the screen as it is: no theme, no words.
+    return (
+      <div className="relative h-full w-full overflow-hidden bg-black" style={chroma ? { background: chroma } : undefined}>
+        <div className={`absolute inset-0 transition-opacity duration-200 ${on ? "opacity-100" : "opacity-0"}`}>
+          {/* eslint-disable-next-line @next/next/no-img-element -- a full-screen picture from the church's own storage */}
+          <img src={slide.image} alt="" className="h-full w-full object-contain" />
+        </div>
+      </div>
+    );
+  }
 
   if (lower) {
     return (

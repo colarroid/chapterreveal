@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { SlideView, type SlideLayout } from "@/components/slide-view";
-import { cleanTheme, DEFAULT_DISPLAY } from "@/lib/display/theme";
+import { cleanTheme, DEFAULT_DISPLAY, isOwnMedia } from "@/lib/display/theme";
 import type { Slide } from "@/lib/scripture/bible";
 import { PRESENT_MESSAGE } from "@/lib/live/present";
 import { localScreenChannel, SCREEN_EVENT, screenTopic, type ScreenPayload } from "@/lib/live/screen";
@@ -106,14 +106,16 @@ export function OutputScreen({
       if (replacedRef.current) return;
       if (!p || p.at <= latest.current) return;
       latest.current = p.at;
-      if (p.slide && only && (p.slide.kind === "song" ? "song" : "scripture") !== only) {
+      if (p.slide && only && (p.slide.kind === "song" ? "song" : p.slide.kind === "text" || p.slide.kind === "image" ? "slide" : "scripture") !== only) {
         // The other kind went up: this output goes blank.
         setVisible(false);
       } else if (p.slide) {
         // The look comes with the slide; only safe colours and this app's own
         // uploaded backgrounds get through.
         const base = p.slide.kind === "song" ? DEFAULT_DISPLAY.songs : DEFAULT_DISPLAY.scripture;
-        setSlide({ ...p.slide, theme: cleanTheme(p.slide.theme, base) });
+        // Pictures only from this app's own storage, like backgrounds.
+        const image = p.slide.kind === "image" && isOwnMedia(p.slide.image) ? p.slide.image : undefined;
+        setSlide({ ...p.slide, image, theme: cleanTheme(p.slide.theme, base) });
         setVisible(true);
       } else {
         // Keep the old text so it can fade out.
