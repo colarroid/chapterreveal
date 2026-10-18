@@ -1,11 +1,12 @@
 "use client";
 
-import { ImagePlus, Maximize, MonitorOff, MonitorUp, Pencil, Plus, ScreenShare, ScreenShareOff, Trash2, Type, X } from "lucide-react";
+import { ImagePlus, Maximize, MonitorOff, MonitorUp, Pencil, Plus, Trash2, Type, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { confirmDialog } from "@/components/confirm";
 import { SlideView } from "@/components/slide-view";
-import { Button, Chip, IconButton, Notice } from "@/components/ui";
+import { Button, Chip, IconButton, Kbd, Notice } from "@/components/ui";
 import { cleanDisplay, type DisplaySettings } from "@/lib/display/theme";
+import { askToGoLive } from "@/lib/live/present-check";
 import { closeProjector, fillProjectorScreen, presentOnProjector, useProjectorOpen } from "@/lib/live/present";
 import { CONSOLE_CHANNEL, ScreenSender, type ConsoleMessage } from "@/lib/live/screen";
 import { limitText, PLAN_LIMITS, planName, type Plan } from "@/lib/plans";
@@ -74,8 +75,12 @@ export function Slides({
   const mediaCount = slides.filter((s) => s.kind !== "text").length;
   const full = mediaCount >= limit;
   const [selected, setSelected] = useState<string | null>(initial[0]?.id ?? null);
-  /** On screen now, if one of these slides is. */
-  const [onAir, setOnAir] = useState<string | null>(null);
+  // Live, as in the other consoles: while on, the selected slide is on
+  // screen; off, slides only preview here and the screen is blank. Starts
+  // off; L toggles it, Esc turns it off.
+  const [isLive, setIsLive] = useState(false);
+  const liveRef = useRef(false);
+  const onAir = isLive ? selected : null;
   const [editing, setEditing] = useState<SavedSlide | "new" | null>(null);
   const [error, setError] = useState("");
   const [uploading, setUploading] = useState<number | null>(null);
@@ -106,14 +111,19 @@ export function Slides({
     if (screen.current) screen.current.theme = display.scripture;
   }, [display, token]);
 
-  const show = useCallback((s: SavedSlide) => {
-    void screen.current?.show(toSlide(s));
-    setOnAir(s.id);
+  /** Selects a slide; while live, it goes on screen too. */
+  const select = useCallback((s: SavedSlide) => {
+    currentRef.current = s; // at once, so Live switched on right after uses it
     setSelected(s.id);
+    if (liveRef.current) void screen.current?.show(toSlide(s));
   }, []);
-  const clear = useCallback(() => {
-    void screen.current?.show(null);
-    setOnAir(null);
+  // The selected slide, read when Live is switched on.
+  const currentRef = useRef<SavedSlide | null>(null);
+  const goLive = useCallback((on: boolean) => {
+    liveRef.current = on;
+    setIsLive(on);
+    const cur = currentRef.current;
+    void screen.current?.show(on && cur ? toSlide(cur) : null);
   }, []);
 
   const [outputUrl, setOutputUrl] = useState("");
@@ -122,38 +132,38 @@ export function Slides({
   const [projectorOpen, syncProjector, projectorFull] = useProjectorOpen();
   async function present() {
     if (!outputUrl) return;
+    if (!liveRef.current && (await askToGoLive("slides"))) goLive(true);
     setPresenting(true);
     await presentOnProjector(outputUrl);
     setPresenting(false);
     syncProjector();
   }
 
-  // Arrow keys step through the list; Enter or Space shows; Esc clears.
+  // Arrow keys step through the list (on screen too while live); L toggles
+  // Live; Esc turns it off.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
-      if (editing || t.closest("input, textarea, [contenteditable], [role=dialog], dialog")) return;
+      if (editing || e.ctrlKey || e.metaKey || e.altKey || t.closest("input, textarea, [contenteditable], [role=dialog], dialog")) return;
       const i = slides.findIndex((s) => s.id === selected);
       if (e.key === "ArrowDown" || e.key === "ArrowRight") {
         e.preventDefault();
         const next = slides[Math.min(slides.length - 1, i + 1)];
-        if (next && onAir) show(next);
-        else if (next) setSelected(next.id);
+        if (next) select(next);
       } else if (e.key === "ArrowUp" || e.key === "ArrowLeft") {
         e.preventDefault();
         const prev = slides[Math.max(0, i - 1)];
-        if (prev && onAir) show(prev);
-        else if (prev) setSelected(prev.id);
-      } else if ((e.key === "Enter" || e.key === " ") && i >= 0) {
+        if (prev) select(prev);
+      } else if (e.key === "l" || e.key === "L") {
         e.preventDefault();
-        show(slides[i]);
+        goLive(!liveRef.current);
       } else if (e.key === "Escape") {
-        clear();
+        goLive(false);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [slides, selected, onAir, editing, show, clear]);
+  }, [slides, selected, editing, select, goLive]);
 
   // ---- Saving -----------------------------------------------------------------
   const nextPosition = () => (slides.length ? Math.max(...slides.map((s) => s.position)) + 1 : 0);
@@ -174,7 +184,7 @@ export function Slides({
     setSelected(saved.id);
     setEditing(null);
     // Edited while on screen: the screen shows the new words.
-    if (onAir === saved.id) show(saved);
+    if (liveRef.current && selected === saved.id) void screen.current?.show(toSlide(saved));
   }
 
   async function upload(file: File) {
@@ -233,7 +243,7 @@ export function Slides({
     if (!ok) return;
     const res = await fetch(`/api/slides/${s.id}`, { method: "DELETE" });
     if (!res.ok) return setError(((await res.json().catch(() => ({}))) as { error?: string }).error ?? "Couldn't delete it.");
-    if (onAir === s.id) clear();
+    if (liveRef.current && selected === s.id) void screen.current?.show(null);
     setSlides((all) => all.filter((x) => x.id !== s.id));
     setSelected((cur) => (cur === s.id ? null : cur));
   }
@@ -263,21 +273,37 @@ export function Slides({
   }
 
   const current = slides.find((s) => s.id === selected) ?? null;
+  useEffect(() => {
+    currentRef.current = current;
+  }, [current]);
 
   return (
     <div className="flex flex-col gap-2 px-2 pb-2 lg:grid lg:h-[calc(100dvh-4rem)] lg:min-h-[520px] lg:grid-cols-[minmax(0,1fr)_minmax(320px,400px)]">
       {/* Preview and screen controls */}
       <div className="flex min-h-0 flex-col gap-2">
         <div className="flex flex-wrap items-center gap-2 rounded-lg bg-surface px-4 py-3">
-          {onAir ? (
-            <Chip tone="live">On screen: {nameOf(slides.find((s) => s.id === onAir) ?? { title: "", kind: "text", body: "", id: "", image_url: null, position: 0 })}</Chip>
+          {isLive ? (
+            <span className="inline-flex items-center gap-1.5 text-xs font-bold text-negative">
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-negative" /> Live
+            </span>
           ) : (
-            <Chip>Nothing on screen from Slides</Chip>
+            <span className="text-xs font-bold text-faint">Not live · screen blank</span>
           )}
+          <button
+            type="button"
+            role="switch"
+            aria-checked={isLive}
+            onClick={() => goLive(!isLive)}
+            title={isLive ? "Live: the selected slide is on screen. Press L or Esc to blank it." : "Not live: slides only preview here. Press L to go live."}
+            className="inline-flex h-9 items-center gap-2 rounded-full bg-surface-2 pr-2 pl-3 text-sm font-semibold transition hover:bg-surface-3"
+          >
+            Live
+            <Kbd>L</Kbd>
+            <span className={`relative h-5 w-9 rounded-full transition ${isLive ? "bg-negative" : "bg-surface-3 ring-1 ring-line-strong"}`}>
+              <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all ${isLive ? "left-[18px]" : "left-0.5"}`} />
+            </span>
+          </button>
           <div className="ml-auto flex flex-wrap items-center gap-1">
-            <Button size="sm" variant="outline" className="h-10" disabled={!onAir} onClick={clear} title="Clear the screen (Esc)">
-              <ScreenShareOff size={14} /> Clear
-            </Button>
             {projectorOpen && !projectorFull && (
               <Button size="sm" variant="outline" className="h-10" onClick={fillProjectorScreen} title="The projector window isn't full screen yet. Click to fill it.">
                 <Maximize size={14} /> Fill projector screen
@@ -300,7 +326,7 @@ export function Slides({
         <div className="flex min-h-0 flex-1 flex-col rounded-lg bg-surface p-3">
           {current ? (
             <>
-              <div className="overflow-hidden rounded-lg ring-1 ring-line">
+              <div className={`overflow-hidden rounded-lg ${onAir === current.id ? "ring-2 ring-negative" : "ring-1 ring-line"}`}>
                 <div className="aspect-video">
                   <SlideView slide={toSlide(current)} theme={current.kind === "text" ? display.scripture : undefined} muted />
                 </div>
@@ -315,12 +341,10 @@ export function Slides({
                 <IconButton label="Delete" onClick={() => void remove(current)} className="hover:text-negative">
                   <Trash2 size={16} />
                 </IconButton>
-                <Button onClick={() => show(current)} disabled={onAir === current.id}>
-                  <ScreenShare size={15} /> {onAir === current.id ? "On screen" : "Show"}
-                </Button>
+                {onAir === current.id && <Chip tone="live">On screen</Chip>}
               </div>
               <p className="mt-2 text-xs text-muted">
-                Arrow keys move through the list (and change what&apos;s on screen while a slide is up). Enter shows the selected slide; Esc clears.
+                Click a slide or use the arrow keys to select it; while Live is on, it goes straight to the screen. Double-click a slide to go live with it.
               </p>
             </>
           ) : (
@@ -413,8 +437,11 @@ export function Slides({
             >
               <button
                 type="button"
-                onClick={() => setSelected(s.id)}
-                onDoubleClick={() => show(s)}
+                onClick={() => select(s)}
+                onDoubleClick={() => {
+                  select(s);
+                  if (!liveRef.current) goLive(true);
+                }}
                 title="Drag to reorder. Double-click to show."
                 className={`flex w-full cursor-grab items-center gap-3 rounded-lg p-2 text-left transition active:cursor-grabbing ${s.id === selected ? "bg-surface-3" : "hover:bg-surface-2"}`}
               >
