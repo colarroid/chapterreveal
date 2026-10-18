@@ -81,11 +81,11 @@ export interface Slide {
   copyright?: string;
   /**
    * What it is; scripture when unset. "song": lyrics, lines as written.
-   * "text": a text slide (announcement), lines as written. "image": a
-   * picture slide, `image` filling the screen.
+   * "text": a text slide (announcement), lines as written. "image" and
+   * "video": a picture or video slide, `image` filling the screen.
    */
-  kind?: "song" | "text" | "image";
-  /** Picture slides: the picture (this app's own storage only). */
+  kind?: "song" | "text" | "image" | "video";
+  /** Picture and video slides: the file (this app's own storage only). */
   image?: string;
   /** How the output draws it; added by the console as it sends the slide. */
   theme?: DisplayTheme;

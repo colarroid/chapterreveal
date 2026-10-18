@@ -5,7 +5,7 @@ import { churchMember } from "./member";
 
 export const dynamic = "force-dynamic";
 
-// Records a picture slide the browser just uploaded. Only files in this
+// Records a picture or video slide the browser just uploaded. Only files in this
 // church's own folder are accepted.
 export async function POST(req: Request) {
   const member = await churchMember();
@@ -13,7 +13,8 @@ export async function POST(req: Request) {
   const config = cloudinaryConfig();
   if (!config) return NextResponse.json({ error: "Picture uploads aren't set up yet." }, { status: 500 });
 
-  const body = (await req.json().catch(() => ({}))) as { public_id?: unknown; title?: unknown; position?: unknown };
+  const body = (await req.json().catch(() => ({}))) as { public_id?: unknown; resource_type?: unknown; title?: unknown; position?: unknown };
+  const kind = body.resource_type === "video" ? "video" : "image";
   const publicId = typeof body.public_id === "string" ? body.public_id : "";
   if (!publicId.startsWith(`${churchFolder(member.churchId)}/`) || !/^[\w/-]+$/.test(publicId)) {
     return NextResponse.json({ error: "That upload doesn't belong to this church." }, { status: 400 });
@@ -23,14 +24,14 @@ export async function POST(req: Request) {
     .from("slides")
     .insert({
       church_id: member.churchId,
-      kind: "image",
+      kind,
       title: typeof body.title === "string" ? body.title.slice(0, 120) : "",
-      image_url: deliveryUrl(config.cloudName, "image", publicId),
+      image_url: deliveryUrl(config.cloudName, kind, publicId),
       public_id: publicId,
       position: typeof body.position === "number" ? Math.round(body.position) : 0,
       created_by: member.userId,
     })
-    .select("id, kind, title, body, image_url, position")
+    .select("id, kind, title, body, image_url, position, expires_at")
     .single();
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
   return NextResponse.json(data);

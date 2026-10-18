@@ -106,7 +106,7 @@ export function OutputScreen({
       if (replacedRef.current) return;
       if (!p || p.at <= latest.current) return;
       latest.current = p.at;
-      if (p.slide && only && (p.slide.kind === "song" ? "song" : p.slide.kind === "text" || p.slide.kind === "image" ? "slide" : "scripture") !== only) {
+      if (p.slide && only && (p.slide.kind === "song" ? "song" : p.slide.kind === "text" || p.slide.kind === "image" || p.slide.kind === "video" ? "slide" : "scripture") !== only) {
         // The other kind went up: this output goes blank.
         setVisible(false);
       } else if (p.slide) {
@@ -114,7 +114,7 @@ export function OutputScreen({
         // uploaded backgrounds get through.
         const base = p.slide.kind === "song" ? DEFAULT_DISPLAY.songs : DEFAULT_DISPLAY.scripture;
         // Pictures only from this app's own storage, like backgrounds.
-        const image = p.slide.kind === "image" && isOwnMedia(p.slide.image) ? p.slide.image : undefined;
+        const image = (p.slide.kind === "image" || p.slide.kind === "video") && isOwnMedia(p.slide.image) ? p.slide.image : undefined;
         setSlide({ ...p.slide, image, theme: cleanTheme(p.slide.theme, base) });
         setVisible(true);
       } else {

@@ -1,4 +1,4 @@
-import { memo, type CSSProperties } from "react";
+import { memo, useEffect, useRef, type CSSProperties } from "react";
 import { backgroundCss, DEFAULT_DISPLAY, FONTS, type Background, type DisplayTheme } from "@/lib/display/theme";
 import type { Slide } from "@/lib/scripture/bible";
 
@@ -60,6 +60,7 @@ export const SlideView = memo(function SlideView({
   visible = true,
   theme,
   chroma,
+  muted = false,
 }: {
   slide: Slide | null;
   layout?: SlideLayout;
@@ -72,6 +73,8 @@ export const SlideView = memo(function SlideView({
    * slide's own background isn't drawn.
    */
   chroma?: string;
+  /** Video slides: a preview (the console) stays silent and still. */
+  muted?: boolean;
 }) {
   const t = themeFor(slide, theme);
   const font = FONTS.find((f) => f.key === t.font) ?? FONTS[0];
@@ -144,13 +147,17 @@ export const SlideView = memo(function SlideView({
       )
     );
 
-  if (slide?.kind === "image" && slide.image && !lower) {
-    // A picture slide fills the screen as it is: no theme, no words.
+  if ((slide?.kind === "image" || slide?.kind === "video") && slide.image && !lower) {
+    // A picture or video slide fills the screen as it is: no theme, no words.
     return (
       <div className="relative h-full w-full overflow-hidden bg-black" style={chroma ? { background: chroma } : undefined}>
         <div className={`absolute inset-0 transition-opacity duration-200 ${on ? "opacity-100" : "opacity-0"}`}>
-          {/* eslint-disable-next-line @next/next/no-img-element -- a full-screen picture from the church's own storage */}
-          <img src={slide.image} alt="" className="h-full w-full object-contain" />
+          {slide.kind === "video" ? (
+            <SlideVideo src={slide.image} playing={on && !muted} muted={muted} />
+          ) : (
+            // eslint-disable-next-line @next/next/no-img-element -- a full-screen picture from the church's own storage
+            <img src={slide.image} alt="" className="h-full w-full object-contain" />
+          )}
         </div>
       </div>
     );
@@ -185,3 +192,27 @@ export const SlideView = memo(function SlideView({
     </div>
   );
 });
+
+/**
+ * A video slide on the output: plays once from the start, with sound when
+ * the browser allows it (it may insist on starting muted until someone has
+ * clicked the window; Present's click usually counts).
+ */
+function SlideVideo({ src, playing, muted }: { src: string; playing: boolean; muted: boolean }) {
+  const ref = useRef<HTMLVideoElement>(null);
+  useEffect(() => {
+    const v = ref.current;
+    if (!v) return;
+    if (!playing) {
+      v.pause();
+      return;
+    }
+    v.currentTime = 0;
+    v.muted = false;
+    v.play().catch(() => {
+      v.muted = true;
+      void v.play().catch(() => {});
+    });
+  }, [playing, src]);
+  return <video ref={ref} src={src} playsInline preload="auto" muted={muted} className="h-full w-full object-contain" />;
+}

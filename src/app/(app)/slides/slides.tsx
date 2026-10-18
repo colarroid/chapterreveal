@@ -8,44 +8,71 @@ import { Button, Chip, IconButton, Notice } from "@/components/ui";
 import { cleanDisplay, type DisplaySettings } from "@/lib/display/theme";
 import { closeProjector, fillProjectorScreen, presentOnProjector, useProjectorOpen } from "@/lib/live/present";
 import { CONSOLE_CHANNEL, ScreenSender, type ConsoleMessage } from "@/lib/live/screen";
+import { limitText, PLAN_LIMITS, planName, type Plan } from "@/lib/plans";
 import type { Slide } from "@/lib/scripture/bible";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { useLeaveWarning } from "@/lib/use-leave-warning";
 
 export interface SavedSlide {
   id: string;
-  kind: "text" | "image";
+  kind: "text" | "image" | "video";
   title: string;
   body: string;
   image_url: string | null;
   position: number;
+  /** Free plan: when a picture or video slide is removed. */
+  expires_at?: string | null;
 }
 
 const IMAGE_MAX = 8 * 1024 * 1024;
+const VIDEO_MAX = 80 * 1024 * 1024;
+const DAY = 86_400_000;
+
+/** "Deletes in 3 days", for Free plan pictures and videos. */
+function expiresIn(iso: string): string {
+  const days = Math.ceil((new Date(iso).getTime() - Date.now()) / DAY);
+  return days <= 1 ? "Deletes within a day" : `Deletes in ${days} days`;
+}
 
 /** What goes to the screen for a saved slide. */
 function toSlide(s: SavedSlide): Slide {
-  return s.kind === "image"
-    ? { kind: "image", image: s.image_url ?? "", label: s.title, translation: "", lines: [] }
+  return s.kind !== "text"
+    ? { kind: s.kind, image: s.image_url ?? "", label: s.title, translation: "", lines: [] }
     : { kind: "text", label: s.title, translation: "", lines: s.body.split("\n").filter((l) => l.trim()).map((text) => ({ verse: 0, text })) };
 }
 
-const nameOf = (s: SavedSlide) => s.title || (s.kind === "image" ? "Picture" : s.body.split("\n").find((l) => l.trim()) || "Text slide");
+const nameOf = (s: SavedSlide) =>
+  s.title || (s.kind === "image" ? "Picture" : s.kind === "video" ? "Video" : s.body.split("\n").find((l) => l.trim()) || "Text slide");
 
 export function Slides({
   churchId,
   userId,
   screenToken,
   display: initialDisplay,
+  plan,
   initial,
 }: {
   churchId: string;
   userId: string;
   screenToken: string;
   display: DisplaySettings;
+  plan: Plan;
   initial: SavedSlide[];
 }) {
   const [slides, setSlides] = useState(initial);
+  // Free plan pictures and videos leave the list the moment they expire
+  // (the files go when the page is next opened).
+  useEffect(() => {
+    const t = setInterval(() => {
+      const now = Date.now();
+      setSlides((all) => (all.some((s) => s.expires_at && new Date(s.expires_at).getTime() <= now) ? all.filter((s) => !s.expires_at || new Date(s.expires_at).getTime() > now) : all));
+    }, 60_000);
+    return () => clearInterval(t);
+  }, []);
+  // The Free plan's allowance: picture and video slides kept at a time.
+  const limit = PLAN_LIMITS[plan].slide;
+  const mediaCount = slides.filter((s) => s.kind !== "text").length;
+  const full = mediaCount >= limit;
   const [selected, setSelected] = useState<string | null>(initial[0]?.id ?? null);
   /** On screen now, if one of these slides is. */
   const [onAir, setOnAir] = useState<string | null>(null);
@@ -152,17 +179,23 @@ export function Slides({
 
   async function upload(file: File) {
     setError("");
-    if (!/^image\/(jpeg|png|webp)$/.test(file.type)) return setError("Use a JPG, PNG or WebP picture.");
-    if (file.size > IMAGE_MAX) return setError("That picture is over 8 MB. Save a smaller copy (1920 pixels wide is plenty).");
+    const video = file.type.startsWith("video/");
+    if (!/^(image\/(jpeg|png|webp)|video\/(mp4|webm|quicktime))$/.test(file.type)) return setError("Use a JPG, PNG or WebP picture, or an MP4, MOV or WebM video.");
+    if (!video && file.size > IMAGE_MAX) return setError("That picture is over 8 MB. Save a smaller copy (1920 pixels wide is plenty).");
+    if (video && file.size > VIDEO_MAX) return setError("That video is over 80 MB. Export it at 1080p, or at a lower bitrate.");
     setUploading(0);
     try {
-      const signRes = await fetch("/api/slides/sign", { method: "POST" });
+      const signRes = await fetch("/api/slides/sign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kind: video ? "video" : "image" }),
+      });
       const signed = await signRes.json().catch(() => ({}));
       if (!signRes.ok) throw new Error(signed.error ?? "Couldn't start the upload.");
       const form = new FormData();
       for (const [k, v] of Object.entries(signed.fields as Record<string, string>)) form.append(k, v);
       form.append("file", file, file.name);
-      const uploaded = await new Promise<{ public_id: string }>((resolve, reject) => {
+      const uploaded = await new Promise<{ public_id: string; resource_type: string }>((resolve, reject) => {
         const xhr = new XMLHttpRequest();
         xhr.open("POST", signed.url);
         xhr.upload.onprogress = (e) => e.total && setUploading(e.loaded / e.total);
@@ -177,10 +210,15 @@ export function Slides({
       const res = await fetch("/api/slides", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ public_id: uploaded.public_id, title: file.name.replace(/\.[^.]+$/, "").slice(0, 120), position: nextPosition() }),
+        body: JSON.stringify({
+          public_id: uploaded.public_id,
+          resource_type: uploaded.resource_type,
+          title: file.name.replace(/\.[^.]+$/, "").slice(0, 120),
+          position: nextPosition(),
+        }),
       });
       const saved = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(saved.error ?? "Couldn't save the picture.");
+      if (!res.ok) throw new Error(saved.error ?? "Couldn't save the upload.");
       setSlides((all) => [...all, saved as SavedSlide]);
       setSelected((saved as SavedSlide).id);
     } catch (e) {
@@ -198,6 +236,30 @@ export function Slides({
     if (onAir === s.id) clear();
     setSlides((all) => all.filter((x) => x.id !== s.id));
     setSelected((cur) => (cur === s.id ? null : cur));
+  }
+
+  // ---- Reordering: drag a slide onto another to put it there -----------------
+  const [dragging, setDragging] = useState<string | null>(null);
+  const [dropOn, setDropOn] = useState<string | null>(null);
+  async function move(id: string, before: string) {
+    if (id === before) return;
+    const order = slides.filter((s) => s.id !== id);
+    const at = order.findIndex((s) => s.id === before);
+    const moved = slides.find((s) => s.id === id);
+    if (!moved || at < 0) return;
+    order.splice(at, 0, moved);
+    const next = order.map((s, position) => ({ ...s, position }));
+    const previous = slides;
+    setSlides(next);
+    // Only rows whose place changed are saved.
+    const changed = next.filter((s) => previous.find((o) => o.id === s.id)?.position !== s.position);
+    const supabase = supabaseBrowser();
+    const results = await Promise.all(changed.map((s) => supabase.from("slides").update({ position: s.position }).eq("id", s.id)));
+    const failed = results.find((r) => r.error);
+    if (failed) {
+      setSlides(previous);
+      setError(failed.error!.message);
+    }
   }
 
   const current = slides.find((s) => s.id === selected) ?? null;
@@ -240,7 +302,7 @@ export function Slides({
             <>
               <div className="overflow-hidden rounded-lg ring-1 ring-line">
                 <div className="aspect-video">
-                  <SlideView slide={toSlide(current)} theme={current.kind === "text" ? display.scripture : undefined} />
+                  <SlideView slide={toSlide(current)} theme={current.kind === "text" ? display.scripture : undefined} muted />
                 </div>
               </div>
               <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -280,15 +342,22 @@ export function Slides({
             <Button size="sm" variant="secondary" onClick={() => setEditing("new")}>
               <Type size={14} /> Text
             </Button>
-            <Button size="sm" variant="secondary" loading={uploading !== null} onClick={() => fileInput.current?.click()}>
+            <Button
+              size="sm"
+              variant="secondary"
+              loading={uploading !== null}
+              disabled={full}
+              title={full ? `The ${planName(plan)} plan keeps ${limitText("slide", limit)} at a time` : "Upload a picture or video"}
+              onClick={() => fileInput.current?.click()}
+            >
               {uploading === null ? <ImagePlus size={14} /> : null}
-              {uploading === null ? "Picture" : `${Math.round(uploading * 100)}%`}
+              {uploading === null ? "Picture or video" : `${Math.round(uploading * 100)}%`}
             </Button>
           </div>
           <input
             ref={fileInput}
             type="file"
-            accept="image/jpeg,image/png,image/webp"
+            accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime,video/webm"
             className="hidden"
             onChange={(e) => {
               const f = e.target.files?.[0];
@@ -307,26 +376,65 @@ export function Slides({
           />
         )}
 
+        {/* The Free plan's allowance for pictures and videos; text is unlimited. */}
+        {Number.isFinite(limit) && (
+          <p className={`px-1 text-xs ${full ? "font-semibold text-warning" : "text-faint"}`}>
+            {mediaCount} of {limitText("slide", limit)} on the {planName(plan)} plan, each kept 7 days.
+            {full ? " Delete one to upload another, or upgrade to keep more." : " Text slides are unlimited."}
+          </p>
+        )}
+
         <ol className="-mx-1 min-h-0 flex-1 space-y-1 overflow-y-auto px-1">
           {slides.map((s) => (
-            <li key={s.id}>
+            <li
+              key={s.id}
+              draggable
+              onDragStart={(e) => {
+                setDragging(s.id);
+                e.dataTransfer.effectAllowed = "move";
+              }}
+              onDragOver={(e) => {
+                if (!dragging) return;
+                e.preventDefault();
+                setDropOn(s.id);
+              }}
+              onDragLeave={() => setDropOn((cur) => (cur === s.id ? null : cur))}
+              onDrop={(e) => {
+                e.preventDefault();
+                if (dragging) void move(dragging, s.id);
+                setDragging(null);
+                setDropOn(null);
+              }}
+              onDragEnd={() => {
+                setDragging(null);
+                setDropOn(null);
+              }}
+              className={`rounded-lg ${dropOn === s.id && dragging !== s.id ? "ring-2 ring-accent" : ""} ${dragging === s.id ? "opacity-40" : ""}`}
+            >
               <button
                 type="button"
                 onClick={() => setSelected(s.id)}
                 onDoubleClick={() => show(s)}
-                className={`flex w-full items-center gap-3 rounded-lg p-2 text-left transition ${s.id === selected ? "bg-surface-3" : "hover:bg-surface-2"}`}
+                title="Drag to reorder. Double-click to show."
+                className={`flex w-full cursor-grab items-center gap-3 rounded-lg p-2 text-left transition active:cursor-grabbing ${s.id === selected ? "bg-surface-3" : "hover:bg-surface-2"}`}
               >
                 <span className="grid aspect-video w-20 shrink-0 place-items-center overflow-hidden rounded bg-black">
                   {s.kind === "image" && s.image_url ? (
                     // eslint-disable-next-line @next/next/no-img-element -- a thumbnail of the church's own picture
                     <img src={s.image_url} alt="" className="h-full w-full object-cover" />
+                  ) : s.kind === "video" && s.image_url ? (
+                    <video src={s.image_url} muted playsInline preload="metadata" className="h-full w-full object-cover" />
                   ) : (
                     <Type size={16} className="text-white/60" />
                   )}
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-semibold">{nameOf(s)}</span>
-                  {s.kind === "text" && <span className="block truncate text-xs text-muted">{s.body.split("\n").filter(Boolean).join(" · ")}</span>}
+                  {s.kind === "text" ? (
+                    <span className="block truncate text-xs text-muted">{s.body.split("\n").filter(Boolean).join(" · ")}</span>
+                  ) : (
+                    s.expires_at && <span className="block text-xs text-warning">{expiresIn(s.expires_at)}</span>
+                  )}
                 </span>
                 {onAir === s.id && <span className="h-2 w-2 shrink-0 rounded-full bg-negative" title="On screen" />}
               </button>
