@@ -169,13 +169,15 @@ export default async function FeaturesPage() {
     <div className="min-h-dvh">
       <SiteHeader signedIn={signedIn} />
       <section style={{ background: HERO_GRADIENT }}>
-        {/* Room for the floating header (24 px + 54 px) above the headline. */}
-        <div className="mx-auto max-w-[60rem] px-5 pt-36 pb-16 sm:px-8 sm:pt-44 sm:pb-20">
+        {/* Room for the floating header (24 px + 54 px) above the headline, and
+            below the buttons for the gradient's bright band, so the words all
+            sit on its dark top. */}
+        <div className="mx-auto max-w-[60rem] px-5 pt-36 pb-[18rem] sm:px-8 sm:pt-44 sm:pb-[20rem]">
           <div className="text-white">
             <TypedHeadline lines={["Everything it does,", "for every service."]} />
             <p className="mt-10 max-w-[33rem] text-base leading-[1.35] font-medium tracking-[-0.01em] sm:mt-14">
               <strong className="text-white/90">Scripture, lyrics, slides and every screen, run from one console.</strong>{" "}
-              <span className="text-white/60">Almost all of it is on the Free plan. Paid adds video slides and more room.</span>
+              <span className="text-white/75">Almost all of it is on the Free plan. Paid adds video slides and more room.</span>
             </p>
           </div>
           {/* Jump to a group. */}
@@ -184,7 +186,7 @@ export default async function FeaturesPage() {
               <a
                 key={id}
                 href={`#${id}`}
-                className="inline-flex h-10 items-center gap-2 rounded-full bg-white/12 px-4 text-sm font-semibold text-white backdrop-blur transition hover:bg-white/20"
+                className="inline-flex h-10 items-center gap-2 rounded-full bg-black/35 px-4 text-sm font-semibold text-white ring-1 ring-white/15 backdrop-blur transition hover:bg-black/50"
               >
                 <Icon size={15} /> {short}
               </a>
@@ -193,7 +195,7 @@ export default async function FeaturesPage() {
         </div>
       </section>
 
-      <main className="mx-auto max-w-[60rem] space-y-24 px-3 pt-16 pb-24 sm:px-8 sm:pt-20">
+      <main className="mx-auto max-w-[60rem] space-y-24 px-3 pb-24 sm:px-8">
         {GROUPS.map(({ id, icon: Icon, title, lead, features }) => (
           <section key={id} id={id} className="scroll-mt-28">
             <div className="flex items-center gap-3 px-2 sm:px-0">
