@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, type CSSProperties } from "react";
+import { memo, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { backgroundCss, DEFAULT_DISPLAY, DEFAULT_LOWER, FONTS, type Background, type DisplayTheme } from "@/lib/display/theme";
 import type { Slide } from "@/lib/scripture/bible";
 
@@ -13,6 +13,14 @@ function textSize(chars: number, layout: SlideLayout): number {
   if (chars < 240) return 3.9;
   return 3.4;
 }
+
+/**
+ * The lower third's text box, as tall as about a third of a 16:9 screen
+ * (56.25cqw high). Words that don't fit at the chosen size wrap first, then
+ * shrink until they do, so a long verse never runs off the screen.
+ */
+const LOWER_BOX = 19; // cqw
+const MIN_FIT = 0.45;
 
 function songSize(chars: number, lines: number, layout: SlideLayout): number {
   if (layout === "lower") return lines > 2 || chars > 90 ? 2.4 : 2.9;
@@ -101,8 +109,19 @@ export const SlideView = memo(function SlideView({
     textTransform: (lower ? lt.uppercase : t.uppercase) ? "uppercase" : undefined,
     textShadow: chroma ? chromaEdge : t.shadow && !lower ? "0 0.06em 0.3em rgba(0,0,0,0.7)" : undefined,
   };
-  const scale = lower ? lt.scale : t.scale;
-  const small = (n: number) => `${(lower ? n * 0.75 : n).toFixed(2)}cqw`;
+  // Lower third: shrunk (fit) until the words fit the box, measured before
+  // the screen paints, so the too-big size never shows.
+  const box = useRef<HTMLDivElement>(null);
+  const [fit, setFit] = useState(1);
+  const fitKey = lower && slide ? `${slide.label}|${chars}|${lt.scale}|${lt.uppercase}|${t.font}` : "";
+  useLayoutEffect(() => setFit(1), [fitKey]);
+  useLayoutEffect(() => {
+    const el = box.current;
+    if (!lower || !el || fit <= MIN_FIT) return;
+    if (el.scrollHeight > el.clientHeight + 1) setFit((f) => Math.max(MIN_FIT, f * 0.92));
+  }, [lower, fit, fitKey]);
+  const scale = lower ? lt.scale * fit : t.scale;
+  const small = (n: number) => `${(lower ? n * 0.75 * fit : n).toFixed(2)}cqw`;
 
   const body =
     slide?.kind === "song" || slide?.kind === "text" ? (
@@ -195,7 +214,9 @@ export const SlideView = memo(function SlideView({
           className={`absolute inset-x-0 ${top ? "top-0 pt-[3.2cqw]" : "bottom-0 pb-[3.2cqw]"} ${band} ${lt.align === "center" ? "text-center" : ""} px-[6cqw] transition-opacity duration-150 ${on ? "opacity-100" : "opacity-0"}`}
           style={{ color: textColor }}
         >
-          {body}
+          <div ref={box} className="overflow-hidden" style={{ maxHeight: `${LOWER_BOX}cqw` }}>
+            {body}
+          </div>
         </div>
       </div>
     );

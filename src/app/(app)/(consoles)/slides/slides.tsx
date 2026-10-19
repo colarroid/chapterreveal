@@ -8,11 +8,12 @@ import { Button, Chip, IconButton, Kbd, Notice } from "@/components/ui";
 import { cleanDisplay, type DisplaySettings } from "@/lib/display/theme";
 import { askToGoLive } from "@/lib/live/present-check";
 import { closeProjector, fillProjectorScreen, presentOnProjector, useProjectorOpen } from "@/lib/live/present";
-import { CONSOLE_CHANNEL, ScreenSender, type ConsoleMessage } from "@/lib/live/screen";
+import { CONSOLE_CHANNEL, SCREEN_TAKEN, ScreenSender, type ConsoleMessage } from "@/lib/live/screen";
 import { limitText, PLAN_LIMITS, planName, type Plan } from "@/lib/plans";
 import type { Slide } from "@/lib/scripture/bible";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { useLeaveWarning } from "@/lib/use-leave-warning";
+import { useConsoleActive } from "../active";
 
 export interface SavedSlide {
   id: string;
@@ -62,6 +63,7 @@ export function Slides({
   plan: Plan;
   initial: SavedSlide[];
 }) {
+  const active = useConsoleActive();
   const [slides, setSlides] = useState(initial);
   // Free plan pictures and videos leave the list the moment they expire
   // (the files go when the page is next opened).
@@ -113,6 +115,19 @@ export function Slides({
     screen.current = s;
     return () => s.close();
   }, [churchId, token]);
+
+  // Live stays on while another console is open (Auto keeps following the
+  // sermon), until another console puts something on the screen: then this
+  // one's Live goes off, so it can't knock that off again.
+  useEffect(() => {
+    const onTaken = (e: Event) => {
+      if ((e as CustomEvent).detail === screen.current) return;
+      liveRef.current = false;
+      setIsLive(false);
+    };
+    window.addEventListener(SCREEN_TAKEN, onTaken);
+    return () => window.removeEventListener(SCREEN_TAKEN, onTaken);
+  }, []);
   // Text slides wear the scripture look from Design.
   useEffect(() => {
     if (screen.current) screen.current.theme = display.scripture;
@@ -149,6 +164,8 @@ export function Slides({
   // Arrow keys step through the list (on screen too while live); L toggles
   // Live; Esc turns it off.
   useEffect(() => {
+    // Only the console on screen answers the keyboard (see ../active.ts).
+    if (!active) return;
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
       if (editing || e.ctrlKey || e.metaKey || e.altKey || t.closest("input, textarea, [contenteditable], [role=dialog], dialog")) return;
@@ -170,7 +187,7 @@ export function Slides({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [slides, selected, editing, select, goLive]);
+  }, [active, slides, selected, editing, select, goLive]);
 
   // ---- Saving -----------------------------------------------------------------
   const nextPosition = () => (slides.length ? Math.max(...slides.map((s) => s.position)) + 1 : 0);

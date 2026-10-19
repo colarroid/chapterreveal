@@ -50,6 +50,34 @@ const WARN_AFTER_MS = 10_000;
 const RESUME_WITHIN_MS = 60 * 60_000;
 const DEVICE_KEY = "scripture.inputDevice";
 
+// One console listens at a time. Scriptures and Song Lyrics stay mounted side
+// by side (../workspace.tsx), and listening stays with the one that started
+// it while you move between tabs (detection carries on while lyrics are
+// prepared). Pressing Start in the other one takes it over: the first stops
+// its microphone and transcriber and leaves the service open here, and the
+// second carries it on: same service, same transcript, no gap in History.
+interface Handoff {
+  serviceId: string;
+  startedAt: number;
+  seq: number;
+  audioSeconds: number;
+  timer: ReturnType<typeof setTimeout>;
+}
+let handoff: Handoff | null = null;
+/** The console listening now, so Start elsewhere can take over from it. */
+let listening: { suspend: () => void } | null = null;
+
+function closeHandoff(reason: "silence" | "abandoned") {
+  if (!handoff) return;
+  clearTimeout(handoff.timer);
+  outbox(supabaseBrowser()).updateService(handoff.serviceId, {
+    ended_at: new Date().toISOString(),
+    end_reason: reason,
+    audio_seconds: Math.round(handoff.audioSeconds),
+  });
+  handoff = null;
+}
+
 /**
  * Called with every detection as soon as it is heard, partial or final.
  * `lagMs` is how long after being spoken the words reached the browser.
@@ -124,6 +152,9 @@ export function useLiveService({ churchId, userId, bible, silenceEndMinutes, onH
   const clipSince = useRef<number | null>(null);
   const lastClip = useRef(0);
   const endRef = useRef<(reason: "operator" | "silence") => Promise<void>>(async () => {});
+  // This console, as the other one sees it when taking over listening (see Handoff).
+  const suspendFn = useRef<() => void>(() => {});
+  const self = useRef({ suspend: () => suspendFn.current() });
 
   const onHeardRef = useRef(onHeard);
   const onCommandRef = useRef(onCommand);
@@ -411,7 +442,18 @@ export function useLiveService({ churchId, userId, bible, silenceEndMinutes, onH
     let resumed = false;
     let resumedSeq = 0;
     let resumedAudio = 0;
-    const { data: last } = await supabase
+    // Listening in the other console: take it over, same service.
+    if (listening && listening !== self.current) listening.suspend();
+    const taken = handoff;
+    if (taken) {
+      clearTimeout(taken.timer);
+      handoff = null;
+      svc = { id: taken.serviceId, started_at: new Date(taken.startedAt).toISOString() };
+      resumed = true;
+      resumedSeq = taken.seq;
+      resumedAudio = taken.audioSeconds;
+    }
+    const { data: last } = svc ? { data: null } : await supabase
       .from("services")
       .select("id, started_at, ended_at, audio_seconds")
       .eq("church_id", churchId)
@@ -525,6 +567,47 @@ export function useLiveService({ churchId, userId, bible, silenceEndMinutes, onH
     endRef.current = end;
   }, [end]);
 
+  // Hidden mid-service: stop listening here and leave the service for the
+  // console that's now on screen (see Handoff).
+  const suspend = useCallback(() => {
+    const service = serviceRef.current;
+    if (!service) return;
+    capture.current?.stop();
+    capture.current = null;
+    const t = transcriber.current;
+    t?.stop();
+    transcriber.current = null;
+    closeHandoff("abandoned");
+    handoff = {
+      serviceId: service,
+      startedAt: startRef.current,
+      seq: seqRef.current,
+      audioSeconds: audioBaseRef.current + (t?.audioSeconds ?? 0),
+      timer: setTimeout(() => closeHandoff("silence"), silenceEndMinutes * 60_000),
+    };
+    serviceRef.current = null;
+    setServiceId(null);
+    setStartedAt(null);
+    levelRef.current = { rms: 0, peak: 0 };
+    setSilent(false);
+    setClipping(false);
+    setPartial({ text: "", detections: [] });
+    setPhase("idle");
+  }, [silenceEndMinutes]);
+
+  useEffect(() => {
+    suspendFn.current = suspend;
+  });
+  // Registered while listening, for the other console's Start.
+  useEffect(() => {
+    if (phase !== "live") return;
+    const me = self.current;
+    listening = me;
+    return () => {
+      if (listening === me) listening = null;
+    };
+  }, [phase]);
+
   // ---- While live: save, track usage, end after long silence ---------------
 
   useEffect(() => {
@@ -556,6 +639,7 @@ export function useLiveService({ churchId, userId, bible, silenceEndMinutes, onH
   // stays "Live now" until the History page tidies it up.
   useEffect(
     () => () => {
+      closeHandoff("abandoned");
       capture.current?.stop();
       testCapture.current?.stop();
       transcriber.current?.stop();

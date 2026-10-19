@@ -31,7 +31,7 @@ import { SlideView } from "@/components/slide-view";
 import { cleanDisplay, type DisplaySettings } from "@/lib/display/theme";
 import { Button, Chip, IconButton, Kbd } from "@/components/ui";
 import { closeProjector, fillProjectorScreen, presentOnProjector, useProjectorOpen } from "@/lib/live/present";
-import { CONSOLE_CHANNEL, ScreenSender, type ConsoleMessage } from "@/lib/live/screen";
+import { CONSOLE_CHANNEL, SCREEN_TAKEN, ScreenSender, type ConsoleMessage } from "@/lib/live/screen";
 import type { Slide } from "@/lib/scripture/bible";
 import { songKeyterms } from "@/lib/songs/keyterms";
 import { outbox } from "@/lib/live/outbox";
@@ -41,6 +41,7 @@ import { firstLine, songBody } from "@/lib/songs/songs";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { EndServiceButton, LevelMeter } from "../dashboard/console";
 import { useLiveService } from "../dashboard/use-live-service";
+import { useConsoleActive } from "../active";
 import { SetlistPanel, type Setlist } from "./setlist";
 import { SongEditor, type SongFields } from "./song-editor";
 
@@ -113,6 +114,7 @@ export function Worship({
   /** Church admins can change the look from the console. */
   canEditDisplay: boolean;
 }) {
+  const active = useConsoleActive();
   const router = useRouter();
 
   // ---- The songs' words -------------------------------------------------------
@@ -258,6 +260,19 @@ export function Worship({
     screen.current = s;
     return () => s.close();
   }, [churchId, token]);
+
+  // Live stays on while another console is open (Auto keeps following the
+  // sermon), until another console puts something on the screen: then this
+  // one's Live goes off, so it can't knock that off again.
+  useEffect(() => {
+    const onTaken = (e: Event) => {
+      if ((e as CustomEvent).detail === screen.current) return;
+      liveRef.current = false;
+      setIsLive(false);
+    };
+    window.addEventListener(SCREEN_TAKEN, onTaken);
+    return () => window.removeEventListener(SCREEN_TAKEN, onTaken);
+  }, []);
   // Every slide goes out in the songs look; a new look re-sends what's up.
   const shownDisplay = useRef(display);
   useEffect(() => {
@@ -419,6 +434,8 @@ export function Worship({
 
   // ---- Keyboard ------------------------------------------------------------
   useEffect(() => {
+    // Only the console on screen answers the keyboard (see ../active.ts).
+    if (!active) return;
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
       if (t.closest("input, textarea, [role=listbox], [contenteditable=true]") || e.ctrlKey || e.metaKey || e.altKey) return;
@@ -434,7 +451,7 @@ export function Worship({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [step, goLive]);
+  }, [active, step, goLive]);
 
   // ---- Library and editing --------------------------------------------------
   const [query, setQuery] = useState("");

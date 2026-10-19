@@ -1,7 +1,7 @@
 import { Skeleton } from "@/components/ui";
 
-// Shown the instant Scriptures is clicked, in the console's own layout.
-export default function Loading() {
+// Shown while a console's data loads, in the console's own layout.
+export function ConsoleSkeleton() {
   return (
     <div className="flex flex-col gap-2 px-2 pb-2 lg:h-[calc(100dvh-4rem)]" aria-busy aria-label="Loading console">
       <div className="flex items-center gap-4 rounded-lg bg-surface px-4 py-3">

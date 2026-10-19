@@ -37,11 +37,12 @@ import { outbox } from "@/lib/live/outbox";
 import { lastSpokenTranslation, matchSpokenTranslation } from "@/lib/scripture/spoken-translations";
 import { findTranslation, starredFirst, type TranslationInfo } from "@/lib/scripture/translations";
 import { closeProjector, fillProjectorScreen, presentOnProjector, useProjectorOpen } from "@/lib/live/present";
-import { CONSOLE_CHANNEL, ScreenSender, type ConsoleMessage } from "@/lib/live/screen";
+import { CONSOLE_CHANNEL, SCREEN_TAKEN, ScreenSender, type ConsoleMessage } from "@/lib/live/screen";
 import { buildSlides, loadTranslation, shapeOf, stepVerse, versesFor, type Slide, type Translation } from "@/lib/scripture/bible";
 import { formatRef, parseSearch, refKey, type Detection, type VerseRef } from "@/lib/scripture/parser";
 import { supabaseBrowser } from "@/lib/supabase/client";
-import { HEADER_ACTIONS_ID } from "../header";
+import { HEADER_ACTIONS_ID } from "../../header";
+import { useConsoleActive } from "../active";
 import { useLiveService, type HeardHandler, type NotFound, type Suggestion, type VoiceCommand } from "./use-live-service";
 
 const AUTO_KEY = "scripture.autoMode";
@@ -73,6 +74,7 @@ interface Selection {
 type ShowSource = "detected" | "search" | "step";
 
 export function Console({ churchId, userId, screenToken, translationId, translations, starred: initialStars, silenceEndMinutes, display: initialDisplay, canEditDisplay }: Props) {
+  const active = useConsoleActive();
   const [bible, setBible] = useState<Translation | null>(null);
   const [bibleError, setBibleError] = useState("");
   const [selection, setSelection] = useState<Selection | null>(null);
@@ -185,6 +187,19 @@ export function Console({ churchId, userId, screenToken, translationId, translat
     screen.current = s;
     return () => s.close();
   }, [churchId, token]);
+
+  // Live stays on while another console is open (Auto keeps following the
+  // sermon), until another console puts something on the screen: then this
+  // one's Live goes off, so it can't knock that off again.
+  useEffect(() => {
+    const onTaken = (e: Event) => {
+      if ((e as CustomEvent).detail === screen.current) return;
+      liveRef.current = false;
+      setIsLive(false);
+    };
+    window.addEventListener(SCREEN_TAKEN, onTaken);
+    return () => window.removeEventListener(SCREEN_TAKEN, onTaken);
+  }, []);
 
   // Every slide goes out in the scripture look. When the look changes, the
   // verse on screen is sent again so the projector shows it straight away.
@@ -534,6 +549,8 @@ export function Console({ churchId, userId, screenToken, translationId, translat
   // ---- Keyboard -----------------------------------------------------------
 
   useEffect(() => {
+    // Only the console on screen answers the keyboard (see ../active.ts).
+    if (!active) return;
     const onKey = (e: KeyboardEvent) => {
       // Already handled, e.g. by an open dropdown using the arrows or Esc.
       if (e.defaultPrevented) return;
@@ -570,7 +587,7 @@ export function Console({ churchId, userId, screenToken, translationId, translat
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [clear, step, showRef, live.suggestions, goLive, typeDigit]);
+  }, [active, clear, step, showRef, live.suggestions, goLive, typeDigit]);
 
   // ---- Render -------------------------------------------------------------
 
@@ -1047,6 +1064,8 @@ export function EndServiceButton({
 }) {
   const [slot, setSlot] = useState<HTMLElement | null>(null);
   useEffect(() => setSlot(document.getElementById(HEADER_ACTIONS_ID)), []);
+  // Only one console listens at a time, so this is the only one: shown even
+  // while another tab is open, to end the service from anywhere.
   if (!slot || (live.phase !== "live" && live.phase !== "ending")) return null;
   return createPortal(
     <Button

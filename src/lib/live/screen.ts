@@ -27,6 +27,9 @@ export const SCREEN_EVENT = "show";
 export const CONSOLE_CHANNEL = "scripture-console";
 export type ConsoleMessage = { type: "screen-token"; token: string } | { type: "display"; display: DisplaySettings };
 
+/** Fired on window when a console puts something on the screen; detail is its ScreenSender. */
+export const SCREEN_TAKEN = "reedark:screen-taken";
+
 export class ScreenSender {
   private channel: RealtimeChannel;
   private local: BroadcastChannel | null;
@@ -83,6 +86,8 @@ export class ScreenSender {
 
   async show(slide: Slide | null): Promise<ScreenPayload> {
     const themed = slide && !slide.theme && this.theme ? { ...slide, theme: this.theme } : slide;
+    // The other consoles in this tab hear that this one took the screen.
+    if (slide && typeof window !== "undefined") window.dispatchEvent(new CustomEvent(SCREEN_TAKEN, { detail: this }));
     const payload: ScreenPayload = { id: crypto.randomUUID(), at: Date.now(), slide: themed };
     // Fastest path first: a tab in this browser, then every other screen
     // (vMix, a projector PC) over realtime. The save can trail behind.

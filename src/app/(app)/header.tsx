@@ -9,6 +9,7 @@ import { ThemeToggle } from "@/components/theme";
 import { Logo } from "@/components/ui";
 import { forgetBibleKey } from "@/lib/scripture/bible-crypto";
 import { forgetSongs } from "@/lib/songs/store";
+import { isConsolePath } from "./(consoles)/active";
 import { supabaseBrowser } from "@/lib/supabase/client";
 
 export const HEADER_ACTIONS_ID = "header-actions";
@@ -161,6 +162,14 @@ export function AppHeader({ churchName, email, firstName, lastName }: { churchNa
             <Link
               key={href}
               href={href}
+              onClick={(e) => {
+                // Between consoles: they're all mounted already (workspace.tsx),
+                // so just change the address; no page load, nothing lost.
+                if (isConsolePath(path) && !e.metaKey && !e.ctrlKey && !e.shiftKey && e.button === 0) {
+                  e.preventDefault();
+                  if (path !== href) window.history.pushState(null, "", href);
+                }
+              }}
               className={`inline-flex h-8 items-center gap-2 rounded-full px-3.5 text-sm transition active:scale-95 ${
                 active ? "bg-surface-3 font-bold text-ink" : "text-muted hover:bg-surface-2 hover:text-ink"
               }`}
