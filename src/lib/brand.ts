@@ -29,9 +29,11 @@ export const SITE_KEYWORDS = [
 // pages show "[to be confirmed]" where they're used.
 export const LEGAL = {
   /** The registered business or person that runs the service. */
-  operator: "",
+  operator: "Colaroid Limited",
   /** Where people send privacy requests and questions. */
-  contactEmail: "",
+  contactEmail: "hello@reedark.com",
+  /** Help with the app. Replies to the weekly summary go here too. */
+  supportEmail: "support@reedark.com",
   /** The country whose law the Terms follow. */
   governingLaw: "the Federal Republic of Nigeria",
   /** Shown at the top of both pages; update when they change. */

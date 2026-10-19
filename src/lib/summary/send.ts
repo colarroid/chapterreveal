@@ -1,6 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { APP_NAME } from "@/lib/brand";
+import { APP_NAME, LEGAL } from "@/lib/brand";
 import { summariseService } from "./ai";
 import { collectServices } from "./collect";
 import { renderSummaryEmail, type SummaryService } from "./email";
@@ -21,7 +21,7 @@ export async function sendEmail(to: string[], email: { subject: string; html: st
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ from: FROM, to, subject: email.subject, html: email.html, text: email.text }),
+    body: JSON.stringify({ from: FROM, reply_to: LEGAL.supportEmail, to, subject: email.subject, html: email.html, text: email.text }),
   });
   if (!res.ok) throw new Error(`Resend ${res.status}: ${(await res.text()).slice(0, 300)}`);
 }

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ThemeToggle } from "@/components/theme";
 import { Logo } from "@/components/ui";
-import { APP_NAME } from "@/lib/brand";
+import { LEGAL } from "@/lib/brand";
 
 // Terms of Use and Privacy Policy: plain reading pages, open to everyone.
 export default function LegalLayout({ children }: { children: React.ReactNode }) {
@@ -16,7 +16,7 @@ export default function LegalLayout({ children }: { children: React.ReactNode })
       <main className="mx-auto w-full max-w-3xl flex-1 px-5 pt-4 pb-16">{children}</main>
       <footer className="border-t border-line">
         <div className="mx-auto flex w-full max-w-3xl flex-wrap gap-x-5 gap-y-2 px-5 py-6 text-sm text-muted">
-          <span>© {new Date().getFullYear()} {APP_NAME}</span>
+          <span>© {new Date().getFullYear()} {LEGAL.operator}</span>
           <Link href="/terms" className="hover:text-ink">
             Terms of Use
           </Link>

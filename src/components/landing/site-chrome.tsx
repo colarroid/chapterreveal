@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ThemeToggle } from "@/components/theme";
 import { Logo } from "@/components/ui";
-import { APP_NAME } from "@/lib/brand";
+import { APP_NAME, LEGAL } from "@/lib/brand";
 
 /**
  * The public pages' floating header: a pill that stays 24 px from the top
@@ -43,7 +43,7 @@ export function SiteHeader({ home = false, signedIn = false }: { home?: boolean;
 export function SiteFooter({ home = false }: { home?: boolean }) {
   return (
     <footer className="border-t border-line">
-      <div className="mx-auto grid max-w-[60rem] grid-cols-2 gap-10 px-5 py-12 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:gap-x-16 sm:px-8">
+      <div className="mx-auto grid max-w-[60rem] grid-cols-2 gap-10 px-5 py-12 sm:grid-cols-[minmax(0,1fr)_auto_auto_auto] sm:gap-x-12 sm:px-8">
         <div className="col-span-2 max-w-sm sm:col-span-1">
           <Logo className="h-14" />
           <p className="mt-4 text-sm text-muted">
@@ -91,6 +91,24 @@ export function SiteFooter({ home = false }: { home?: boolean }) {
             </li>
           </ul>
         </div>
+        <div>
+          <h2 className="text-sm font-bold">Contact</h2>
+          <ul className="mt-3 space-y-2 text-sm text-muted">
+            <li>
+              <a href={`mailto:${LEGAL.contactEmail}`} className="hover:text-ink">
+                {LEGAL.contactEmail}
+              </a>
+            </li>
+            <li>
+              <a href={`mailto:${LEGAL.supportEmail}`} className="hover:text-ink">
+                {LEGAL.supportEmail}
+              </a>
+            </li>
+          </ul>
+        </div>
+        <p className="col-span-2 text-xs text-faint sm:col-span-4">
+          © {new Date().getFullYear()} {LEGAL.operator}. {APP_NAME} is a product of {LEGAL.operator}.
+        </p>
       </div>
     </footer>
   );

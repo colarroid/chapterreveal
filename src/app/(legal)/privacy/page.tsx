@@ -15,7 +15,7 @@ export default function PrivacyPage() {
       intro={
         <p>
           This explains what personal data {APP_NAME} collects, why, who it&apos;s shared with, and the choices you have. It&apos;s run by{" "}
-          <Fill value={LEGAL.operator} />. We don&apos;t sell personal data, show adverts, or use advertising or analytics trackers.
+          <Fill value={LEGAL.operator} />. We don&apos;t sell personal data, show adverts, or use advertising trackers.
         </p>
       }
     >
