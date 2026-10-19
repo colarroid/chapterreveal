@@ -35,5 +35,5 @@ export const LEGAL = {
   /** The country whose law the Terms follow. */
   governingLaw: "the Federal Republic of Nigeria",
   /** Shown at the top of both pages; update when they change. */
-  updated: "15 October 2026",
+  updated: "19 October 2026",
 };

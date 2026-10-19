@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono, Montserrat, Playfair_Display, Source_Serif_4 } from "next/font/google";
+import { Analytics } from "@/components/analytics";
 import { ConfirmHost } from "@/components/confirm";
 import { OfflineSupport } from "@/components/offline";
 import { compatScript } from "@/lib/compat-script";
@@ -65,6 +66,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       <body className={`${ui.variable} ${mono.variable} ${serif.variable} ${bold.variable} ${elegant.variable} antialiased`}>
         {children}
         <ConfirmHost />
+        <Analytics />
         <OfflineSupport />
       </body>
     </html>

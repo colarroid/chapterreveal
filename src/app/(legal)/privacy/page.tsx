@@ -38,6 +38,10 @@ export default function PrivacyPage() {
             <b>Technical data:</b> the sign-in cookie that keeps you logged in, and the basic logs our hosting keeps to run the service securely (such as IP
             addresses and error reports).
           </li>
+          <li>
+            <b>Visit statistics:</b> which pages are visited, and roughly from which country and device, counted without cookies and without identifying
+            you. The projector and livestream pages aren&apos;t counted.
+          </li>
         </ul>
       </Clause>
 
@@ -83,7 +87,7 @@ export default function PrivacyPage() {
             <b>Resend</b>: sends our emails.
           </li>
           <li>
-            <b>Our hosting provider</b>: serves the website and app.
+            <b>Our hosting provider</b>: serves the website and app, and counts page visits.
           </li>
         </ul>
         <p>
@@ -115,8 +119,8 @@ export default function PrivacyPage() {
       <Clause n={7} title="Cookies and storage on your device">
         <p>
           We use one essential cookie to keep you signed in. {APP_NAME} also saves a few preferences in your browser, such as your theme, chosen translation,
-          microphone and playlist, and keeps transcript lines there briefly if the internet drops, until they can be saved. We don&apos;t use advertising or
-          tracking cookies, so there&apos;s nothing to opt out of.
+          microphone and playlist, and keeps transcript lines there briefly if the internet drops, until they can be saved. Visit statistics are counted without
+          cookies. We don&apos;t use advertising or tracking cookies, so there&apos;s nothing to opt out of.
         </p>
       </Clause>
 
