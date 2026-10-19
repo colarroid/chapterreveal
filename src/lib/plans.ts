@@ -26,3 +26,34 @@ export function limitText(kind: keyof Limits, n: number): string {
   const word = kind === "image" ? "picture" : kind;
   return `${n} ${word}${n === 1 ? "" : "s"}`;
 }
+
+/** The Paid plan's price in one currency. */
+export interface Price {
+  currency: "USD" | "NGN" | "CAD";
+  monthly: number;
+  yearly: number;
+}
+
+/** US dollars: the United States and everywhere without its own price. */
+export const DEFAULT_PRICE: Price = { currency: "USD", monthly: 10, yearly: 80 };
+
+/** Set prices in local currency, by country code (not live exchange rates). */
+const LOCAL_PRICES: Record<string, Price> = {
+  NG: { currency: "NGN", monthly: 13_000, yearly: 104_000 },
+  CA: { currency: "CAD", monthly: 14, yearly: 110 },
+};
+
+/** The Paid price for a visitor's country (from the request; US dollars when unknown). */
+export const priceFor = (country?: string | null): Price => LOCAL_PRICES[(country ?? "").toUpperCase()] ?? DEFAULT_PRICE;
+
+/** "$10", "₦13,000", "CA$14", "$6.67". */
+export function formatPrice(amount: number, currency: Price["currency"]): string {
+  return new Intl.NumberFormat("en", {
+    style: "currency",
+    currency,
+    // "₦13,000" (the default writes "NGN 13,000"); Canadian dollars keep "CA$" so they're not read as US dollars.
+    currencyDisplay: currency === "NGN" ? "narrowSymbol" : "symbol",
+    minimumFractionDigits: amount % 1 ? 2 : 0,
+    maximumFractionDigits: 2,
+  }).format(amount);
+}
