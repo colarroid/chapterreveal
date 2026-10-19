@@ -1,7 +1,6 @@
 "use client";
 
 import { Film, ImagePlus, Maximize, MonitorOff, MonitorUp, Pencil, Plus, Trash2, Type, X } from "lucide-react";
-import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { confirmDialog } from "@/components/confirm";
 import { SlideView } from "@/components/slide-view";
@@ -391,9 +390,10 @@ export function Slides({
         {upsell && (
           <Notice tone="info">
             Video slides are a Pro feature, on the Paid plan.{" "}
-            <Link href="/pricing" className="font-semibold underline">
+            {/* A new tab, so a service in progress here isn't left. */}
+            <a href="/pricing" target="_blank" rel="noopener" className="font-semibold underline">
               See plans
-            </Link>
+            </a>
           </Notice>
         )}
         {error && <Notice tone="error">{error}</Notice>}
@@ -485,7 +485,7 @@ export function Slides({
               onClick={() => fileInput.current?.click()}
             >
               {uploading === null ? <ImagePlus size={14} /> : null}
-              {uploading === null ? "Pictures" : `${Math.round(uploading * 100)}%`}
+              {uploading === null ? "Pic" : `${Math.round(uploading * 100)}%`}
             </Button>
             {/* Video slides are a Pro (Paid) feature: on Free the button says so. */}
             <Button
@@ -495,7 +495,7 @@ export function Slides({
               title={limits.videoSlides ? "Upload a video slide" : "Video slides are on the Paid plan"}
               onClick={() => (limits.videoSlides ? videoInput.current?.click() : setUpsell(true))}
             >
-              <Film size={14} /> Video
+              <Film size={14} /> Vid
               <span className="rounded-full bg-accent-fill px-1.5 py-px text-[9px] leading-tight font-bold tracking-wide text-on-accent">PRO</span>
             </Button>
           </div>
