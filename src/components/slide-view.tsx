@@ -82,18 +82,22 @@ export const SlideView = memo(function SlideView({
   const many = (slide?.lines.length ?? 0) > 1;
   const on = visible && !!slide;
 
-  // The lower third for vMix keeps its own look: white words on a dark band.
+  // The lower third keeps its own look: white words on a dark band (or, on
+  // green, on nothing).
   const lower = layout === "lower";
   // On a key colour (green screen) nothing may be green: the keyer removes
   // green pixels wherever they are, so the reference would vanish. Words and
-  // reference are white there, with a shadow to stay readable over video.
+  // reference are white there, straight on the green (no band), with a hard
+  // dark edge to stay readable over the video. The edge has no blur: a soft
+  // shadow is half see-through, and comes out as a green haze once keyed.
+  const chromaEdge = "0.045em 0.045em 0 #000, -0.02em -0.02em 0 #000, 0.02em -0.02em 0 #000, -0.02em 0.02em 0 #000";
   const textColor = lower || chroma ? "#ffffff" : t.textColor;
   const accent = chroma ? "#ffffff" : lower ? "#1ed760" : t.accentColor;
   const words: CSSProperties = {
     fontFamily: font.family,
     fontWeight: font.weight,
     textTransform: t.uppercase ? "uppercase" : undefined,
-    textShadow: chroma && !lower ? "0 0.04em 0.25em rgba(0,0,0,0.85)" : t.shadow && !lower ? "0 0.06em 0.3em rgba(0,0,0,0.7)" : undefined,
+    textShadow: chroma ? chromaEdge : t.shadow && !lower ? "0 0.06em 0.3em rgba(0,0,0,0.7)" : undefined,
   };
   const scale = lower ? 1 : t.scale;
   const small = (n: number) => `${(lower ? n * 0.75 : n).toFixed(2)}cqw`;
@@ -110,7 +114,7 @@ export const SlideView = memo(function SlideView({
           ))}
         </p>
         {slide.copyright && (
-          <p className="mt-[1.6cqw] font-sans" style={{ fontSize: small(1.1), opacity: chroma ? 1 : 0.45 }}>
+          <p className="mt-[1.6cqw] font-sans" style={{ fontSize: small(1.1), opacity: chroma ? 1 : 0.45, textShadow: chroma ? chromaEdge : undefined }}>
             {slide.copyright}
           </p>
         )}
@@ -132,14 +136,14 @@ export const SlideView = memo(function SlideView({
           </p>
           <p
             className="mt-[1.6cqw] font-sans font-semibold tracking-wide"
-            style={{ color: accent, fontSize: small(2), textShadow: chroma && !lower ? "0 0.04em 0.25em rgba(0,0,0,0.85)" : undefined }}
+            style={{ color: accent, fontSize: small(2), textShadow: chroma ? chromaEdge : undefined }}
           >
             {/* Solid on green: see-through text comes out green-tinted once keyed. */}
             {slide.label} <span className={`ml-[0.6em] font-medium ${chroma ? "" : "opacity-60"}`} style={{ color: textColor }}>{slide.translation}</span>
           </p>
           {slide.copyright && (
             // Small, but the licence asks for it to be readable.
-            <p className="mt-[0.8cqw] font-sans" style={{ fontSize: small(1.1), opacity: chroma ? 1 : 0.45 }}>
+            <p className="mt-[0.8cqw] font-sans" style={{ fontSize: small(1.1), opacity: chroma ? 1 : 0.45, textShadow: chroma ? chromaEdge : undefined }}>
               {slide.copyright}
             </p>
           )}
@@ -177,8 +181,9 @@ export const SlideView = memo(function SlideView({
     return (
       <div className="relative h-full w-full overflow-hidden [container-type:inline-size]" style={chroma ? { background: chroma } : undefined}>
         <div
-          // On green (online output) the band is solid: a fade into the key colour comes out as a dark-green haze once keyed.
-          className={`absolute inset-x-0 bottom-0 ${chroma ? "bg-[#0b0b0b] pt-[2.6cqw]" : "bg-gradient-to-t from-black/90 via-black/80 to-black/0 pt-[4cqw]"} px-[6cqw] pb-[3.2cqw] transition-opacity duration-150 ${on ? "opacity-100" : "opacity-0"}`}
+          // On green (livestream output) there's no band at all: the words sit
+          // on the key colour, so only they show over the video once keyed.
+          className={`absolute inset-x-0 bottom-0 ${chroma ? "pt-[2.6cqw]" : "bg-gradient-to-t from-black/90 via-black/80 to-black/0 pt-[4cqw]"} px-[6cqw] pb-[3.2cqw] transition-opacity duration-150 ${on ? "opacity-100" : "opacity-0"}`}
           style={{ color: textColor }}
         >
           {body}
