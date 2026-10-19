@@ -5,6 +5,7 @@ import { DEFAULT_PRICE, formatPrice, priceFor } from "@/lib/plans";
 import { getSessionUser } from "@/lib/supabase/server";
 import { heroBackground } from "@/components/landing/gradient";
 import { TypedHeadline } from "@/components/landing/hero";
+import { Faq } from "@/components/landing/faq";
 import { PricingPlans } from "./plans";
 
 export const metadata = {
@@ -45,6 +46,7 @@ export default async function PricingPage({ searchParams }: { searchParams: Prom
       {/* After terms.so's pricing page: a tall gradient with the headline and
           a short intro on the left, and the plans sitting where it fades into
           the page. ReedArk's own gradient, type and words. */}
+      <main>
       <section>
         {/* Room for the floating header (24 px + 54 px) above the headline. */}
         <div className="mx-auto max-w-[60rem] px-5 pt-36 pb-10 sm:px-8 sm:pt-44">
@@ -60,19 +62,18 @@ export default async function PricingPage({ searchParams }: { searchParams: Prom
         </div>
       </section>
 
-      <main className="mx-auto max-w-[60rem] px-5 pb-24 sm:px-8">
-
-        <section className="mx-auto mt-16 max-w-2xl">
-          <h2 className="text-2xl font-semibold tracking-[-0.02em]">Questions</h2>
-          <dl className="mt-6 divide-y divide-line border-y border-line">
-            {FAQ.map(([q, a]) => (
-              <div key={q} className="py-5">
-                <dt className="font-semibold">{q}</dt>
-                <dd className="mt-1.5 text-muted">{a}</dd>
-              </div>
-            ))}
-          </dl>
-        </section>
+      <div className="mt-24">
+        <Faq
+          title={
+            <>
+              Questions churches
+              <br />
+              ask us.
+            </>
+          }
+          items={FAQ}
+        />
+      </div>
       </main>
       <SiteFooter />
     </div>
