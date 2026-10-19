@@ -15,10 +15,10 @@ export const HERO_GRADIENT =
 
 export function TypedHeadline({
   lines,
-  size = "text-[2.6rem] sm:text-[3.6rem] lg:text-[4.1rem]",
+  size = "leading-[1.0] text-[2.6rem] sm:text-[3.6rem] lg:text-[4.1rem]",
 }: {
   lines: string[];
-  /** Font size classes, small screens up. */
+  /** Line height and font size classes, small screens up. */
   size?: string;
 }) {
   const reduced = useReducedMotion();
@@ -49,7 +49,7 @@ export function TypedHeadline({
   const ends = lines.reduce<number[]>((acc, l) => [...acc, (acc.at(-1) ?? 0) + l.length], []);
   const caretLine = Math.max(0, ends.findIndex((e) => e >= shown));
   return (
-    <h1 className={`leading-[1.0] font-medium tracking-[-0.03em] ${size}`}>
+    <h1 className={`font-medium tracking-[-0.03em] ${size}`}>
       {/* The full sentence for screen readers, whatever the animation is doing. */}
       <span className="sr-only">{lines.join(" ")}</span>
       <span aria-hidden>

@@ -99,7 +99,7 @@ export default async function Home() {
           {/* Room for the floating header (24 px + 54 px) above the headline. */}
           <div className="pt-36 pb-[19rem] sm:pt-44 sm:pb-[22rem]">
             {/* 20% smaller than the pricing page's headline. */}
-            <TypedHeadline lines={HEADLINE} size="text-[2.08rem] sm:text-[2.88rem] lg:text-[3.28rem]" />
+            <TypedHeadline lines={HEADLINE} size="leading-[1.18] text-[2.08rem] sm:text-[2.88rem] lg:text-[3.28rem]" />
             <div className="mt-9 flex flex-wrap gap-3">
               <Link
                 href="/signup"
