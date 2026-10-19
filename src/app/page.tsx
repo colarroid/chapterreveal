@@ -11,7 +11,12 @@ import { getSessionUser } from "@/lib/supabase/server";
 // gradient runs from near-black through deep green into the brand green,
 // then melts into the page background, so it works in both themes.
 
-const HEADLINE = ["Put every verse on screen.", "Display lyrics as you worship.", "Switch translations in seconds."];
+const HEADLINE = [
+  "Put every verse on screen with AI.",
+  "Display lyrics as you worship.",
+  "Switch translations in milliseconds.",
+  "You won't need complicated projection software.",
+];
 
 // The two halves of a service, side by side under the hero.
 const SIDES = [
@@ -95,9 +100,6 @@ export default async function Home() {
           <div className="pt-36 pb-[19rem] sm:pt-44 sm:pb-[22rem]">
             {/* 20% smaller than the pricing page's headline. */}
             <TypedHeadline lines={HEADLINE} size="text-[2.08rem] sm:text-[2.88rem] lg:text-[3.28rem]" />
-            <p className="mt-6 max-w-xl text-[0.9rem] leading-snug text-white/75 sm:text-base">
-              Your church service deserves better than complicated projection software.
-            </p>
             <div className="mt-9 flex flex-wrap gap-3">
               <Link
                 href="/signup"
