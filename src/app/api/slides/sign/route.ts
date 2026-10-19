@@ -14,7 +14,7 @@ export async function POST(req: Request) {
   if (member instanceof NextResponse) return member;
   const config = cloudinaryConfig();
   if (!config) return NextResponse.json({ error: "Uploads aren't set up yet (Cloudinary keys missing)." }, { status: 500 });
-  const { kind } = (await req.json().catch(() => ({}))) as { kind?: unknown };
+  const { kind, adding } = (await req.json().catch(() => ({}))) as { kind?: unknown; adding?: unknown };
   const video = kind === "video";
 
   // The Free plan's allowance, checked before a big upload starts (the
@@ -29,8 +29,13 @@ export async function POST(req: Request) {
       .neq("kind", "text")
       .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`),
   ]);
-  const limit = (PLAN_LIMITS[plan as Plan] ?? PLAN_LIMITS.free).slide;
-  if ((count ?? 0) >= limit) {
+  const limits = PLAN_LIMITS[plan as Plan] ?? PLAN_LIMITS.free;
+  if (video && !limits.videoSlides) {
+    return NextResponse.json({ error: "Video slides are on the Paid plan. Upload pictures instead, or upgrade." }, { status: 402 });
+  }
+  // Adding a picture to an existing slide doesn't make another slide.
+  const limit = limits.slide;
+  if (!adding && (count ?? 0) >= limit) {
     return NextResponse.json({ error: `The Free plan keeps ${limitText("slide", limit)} at a time. Delete one, or upgrade to keep more.` }, { status: 402 });
   }
 

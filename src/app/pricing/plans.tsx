@@ -11,7 +11,7 @@ const EVERYONE = [
   "Follows the singing, slide by slide",
   "Every Bible translation we offer",
   "Shared song library, your own songs and playlists",
-  "Text, picture and video slides",
+  "Text and picture slides",
   "Projector and green-screen livestream outputs",
   "Service history, and Bibles that work offline",
 ];
@@ -20,9 +20,11 @@ const free = PLAN_LIMITS.free;
 const FREE_LIMITS = [
   `${limitText("image", free.image)} and ${limitText("video", free.video)} as backgrounds`,
   `${limitText("gradient", free.gradient)} saved`,
-  `${limitText("slide", free.slide)}, each kept 7 days`,
+  `${free.slide} picture slides with up to ${free.slideImages} pictures each, kept 7 days`,
 ];
 const PAID_EXTRAS = [
+  "Video slides",
+  `Up to ${PLAN_LIMITS.paid.slideImages} pictures on one slide`,
   "Unlimited background pictures and videos",
   "Unlimited saved gradients",
   "Unlimited picture and video slides, kept until you delete them",

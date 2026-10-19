@@ -11,17 +11,21 @@ export interface Limits {
   gradient: number;
   /** Picture and video slides kept at a time (each kept 7 days on Free). */
   slide: number;
+  /** Pictures on one picture slide, shown side by side. */
+  slideImages: number;
+  /** Video slides allowed at all. */
+  videoSlides: boolean;
 }
 
 export const PLAN_LIMITS: Record<Plan, Limits> = {
-  free: { image: 5, video: 2, gradient: 10, slide: 10 },
-  paid: { image: Infinity, video: Infinity, gradient: Infinity, slide: Infinity },
+  free: { image: 5, video: 2, gradient: 10, slide: 10, slideImages: 3, videoSlides: false },
+  paid: { image: Infinity, video: Infinity, gradient: Infinity, slide: Infinity, slideImages: 6, videoSlides: true },
 };
 
 export const planName = (plan: Plan) => (plan === "paid" ? "Paid" : "Free");
 
 /** "5 pictures", "2 videos", "10 gradients". */
-export function limitText(kind: keyof Limits, n: number): string {
+export function limitText(kind: "image" | "video" | "gradient" | "slide", n: number): string {
   if (kind === "slide") return `${n} picture and video slide${n === 1 ? "" : "s"}`;
   const word = kind === "image" ? "picture" : kind;
   return `${n} ${word}${n === 1 ? "" : "s"}`;

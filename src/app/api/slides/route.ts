@@ -1,24 +1,29 @@
 import { NextResponse } from "next/server";
-import { churchFolder, cloudinaryConfig, deliveryUrl } from "@/lib/cloudinary";
+import { cloudinaryConfig, deliveryUrl } from "@/lib/cloudinary";
 import { supabaseServer } from "@/lib/supabase/server";
+import { imageEntry, ownPublicId } from "./media";
 import { churchMember } from "./member";
 
 export const dynamic = "force-dynamic";
 
-// Records a picture or video slide the browser just uploaded. Only files in this
-// church's own folder are accepted.
+const COLUMNS = "id, kind, title, body, image_url, images, position, expires_at";
+
+// Records a picture slide (one or more pictures just uploaded) or a video
+// slide. Only files in this church's own folder are accepted; the database
+// enforces the plan (pictures per slide, video slides, how many slides).
 export async function POST(req: Request) {
   const member = await churchMember();
   if (member instanceof NextResponse) return member;
   const config = cloudinaryConfig();
-  if (!config) return NextResponse.json({ error: "Picture uploads aren't set up yet." }, { status: 500 });
+  if (!config) return NextResponse.json({ error: "Uploads aren't set up yet." }, { status: 500 });
 
-  const body = (await req.json().catch(() => ({}))) as { public_id?: unknown; resource_type?: unknown; title?: unknown; position?: unknown };
-  const kind = body.resource_type === "video" ? "video" : "image";
-  const publicId = typeof body.public_id === "string" ? body.public_id : "";
-  if (!publicId.startsWith(`${churchFolder(member.churchId)}/`) || !/^[\w/-]+$/.test(publicId)) {
+  const body = (await req.json().catch(() => ({}))) as { kind?: unknown; public_ids?: unknown; title?: unknown; position?: unknown };
+  const kind = body.kind === "video" ? "video" : "image";
+  const ids = (Array.isArray(body.public_ids) ? body.public_ids : []).map((v) => ownPublicId(member.churchId, v));
+  if (!ids.length || ids.some((v) => !v) || (kind === "video" && ids.length !== 1)) {
     return NextResponse.json({ error: "That upload doesn't belong to this church." }, { status: 400 });
   }
+  const first = ids[0]!;
   const supabase = await supabaseServer();
   const { data, error } = await supabase
     .from("slides")
@@ -26,12 +31,13 @@ export async function POST(req: Request) {
       church_id: member.churchId,
       kind,
       title: typeof body.title === "string" ? body.title.slice(0, 120) : "",
-      image_url: deliveryUrl(config.cloudName, kind, publicId),
-      public_id: publicId,
+      image_url: deliveryUrl(config.cloudName, kind, first),
+      public_id: first,
+      images: kind === "image" ? ids.map((id) => imageEntry(config.cloudName, id!)) : [],
       position: typeof body.position === "number" ? Math.round(body.position) : 0,
       created_by: member.userId,
     })
-    .select("id, kind, title, body, image_url, position, expires_at")
+    .select(COLUMNS)
     .single();
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
   return NextResponse.json(data);

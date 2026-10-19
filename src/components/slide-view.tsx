@@ -154,6 +154,16 @@ export const SlideView = memo(function SlideView({
         <div className={`absolute inset-0 transition-opacity duration-200 ${on ? "opacity-100" : "opacity-0"}`}>
           {slide.kind === "video" ? (
             <SlideVideo src={slide.image} playing={on && !muted} muted={muted} />
+          ) : (slide.images?.length ?? 0) > 1 ? (
+            // Several pictures: side by side, each whole, on black.
+            <div className="flex h-full w-full items-center gap-[1.2cqw] p-[1.2cqw]">
+              {slide.images!.map((src, i) => (
+                <div key={`${i}-${src}`} className="flex h-full min-w-0 flex-1 items-center justify-center">
+                  {/* eslint-disable-next-line @next/next/no-img-element -- pictures from the church's own storage */}
+                  <img src={src} alt="" className="max-h-full max-w-full object-contain" />
+                </div>
+              ))}
+            </div>
           ) : (
             // eslint-disable-next-line @next/next/no-img-element -- a full-screen picture from the church's own storage
             <img src={slide.image} alt="" className="h-full w-full object-contain" />

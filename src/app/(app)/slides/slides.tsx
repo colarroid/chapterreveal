@@ -1,6 +1,7 @@
 "use client";
 
-import { ImagePlus, Maximize, MonitorOff, MonitorUp, Pencil, Plus, Trash2, Type, X } from "lucide-react";
+import { Film, ImagePlus, Maximize, MonitorOff, MonitorUp, Pencil, Plus, Trash2, Type, X } from "lucide-react";
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { confirmDialog } from "@/components/confirm";
 import { SlideView } from "@/components/slide-view";
@@ -20,6 +21,8 @@ export interface SavedSlide {
   title: string;
   body: string;
   image_url: string | null;
+  /** Picture slides: their pictures, side by side on screen. */
+  images?: { url: string; public_id: string }[];
   position: number;
   /** Free plan: when a picture or video slide is removed. */
   expires_at?: string | null;
@@ -38,7 +41,7 @@ function expiresIn(iso: string): string {
 /** What goes to the screen for a saved slide. */
 function toSlide(s: SavedSlide): Slide {
   return s.kind !== "text"
-    ? { kind: s.kind, image: s.image_url ?? "", label: s.title, translation: "", lines: [] }
+    ? { kind: s.kind, image: s.image_url ?? "", images: s.images?.map((i) => i.url), label: s.title, translation: "", lines: [] }
     : { kind: "text", label: s.title, translation: "", lines: s.body.split("\n").filter((l) => l.trim()).map((text) => ({ verse: 0, text })) };
 }
 
@@ -71,7 +74,8 @@ export function Slides({
     return () => clearInterval(t);
   }, []);
   // The Free plan's allowance: picture and video slides kept at a time.
-  const limit = PLAN_LIMITS[plan].slide;
+  const limits = PLAN_LIMITS[plan];
+  const limit = limits.slide;
   const mediaCount = slides.filter((s) => s.kind !== "text").length;
   const full = mediaCount >= limit;
   const [selected, setSelected] = useState<string | null>(initial[0]?.id ?? null);
@@ -83,8 +87,12 @@ export function Slides({
   const onAir = isLive ? selected : null;
   const [editing, setEditing] = useState<SavedSlide | "new" | null>(null);
   const [error, setError] = useState("");
+  /** "Video slides are Pro": shown when a Free church presses Video. */
+  const [upsell, setUpsell] = useState(false);
   const [uploading, setUploading] = useState<number | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
+  const addInput = useRef<HTMLInputElement>(null);
+  const videoInput = useRef<HTMLInputElement>(null);
   useLeaveWarning(uploading !== null);
 
   // ---- The screen ------------------------------------------------------------
@@ -187,54 +195,113 @@ export function Slides({
     if (liveRef.current && selected === saved.id) void screen.current?.show(toSlide(saved));
   }
 
-  async function upload(file: File) {
+  /** Uploads one file to Cloudinary; returns its id there. `adding`: to an existing slide. */
+  async function uploadFile(file: File, video: boolean, adding: boolean, onProgress: (f: number) => void): Promise<string> {
+    const signRes = await fetch("/api/slides/sign", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kind: video ? "video" : "image", adding }),
+    });
+    const signed = await signRes.json().catch(() => ({}));
+    if (!signRes.ok) throw new Error(signed.error ?? "Couldn't start the upload.");
+    const form = new FormData();
+    for (const [k, v] of Object.entries(signed.fields as Record<string, string>)) form.append(k, v);
+    form.append("file", file, file.name);
+    const uploaded = await new Promise<{ public_id: string }>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", signed.url);
+      xhr.upload.onprogress = (e) => e.total && onProgress(e.loaded / e.total);
+      xhr.onload = () => {
+        const d = JSON.parse(xhr.responseText || "{}");
+        if (xhr.status >= 200 && xhr.status < 300) resolve(d);
+        else reject(new Error(d.error?.message ? `Upload failed: ${d.error.message}` : "Upload failed."));
+      };
+      xhr.onerror = () => reject(new Error("Upload failed. Check the connection and try again."));
+      xhr.send(form);
+    });
+    return uploaded.public_id;
+  }
+
+  /** Checks picked files: pictures (up to the plan's per-slide number) or one video. */
+  function checkFiles(files: File[], room: number): string | null {
+    const videos = files.filter((f) => f.type.startsWith("video/"));
+    if (files.some((f) => !/^(image\/(jpeg|png|webp)|video\/(mp4|webm|quicktime))$/.test(f.type))) return "Use JPG, PNG or WebP pictures, or an MP4, MOV or WebM video.";
+    if (videos.length && !limits.videoSlides) return "Video slides are on the Paid plan. Upload pictures instead, or upgrade.";
+    if (videos.length && files.length > 1) return "A video slide is one video on its own. Pick just the video.";
+    if (files.some((f) => !f.type.startsWith("video/") && f.size > IMAGE_MAX)) return "A picture is over 8 MB. Save a smaller copy (1920 pixels wide is plenty).";
+    if (videos.some((f) => f.size > VIDEO_MAX)) return "That video is over 80 MB. Export it at 1080p, or at a lower bitrate.";
+    if (!videos.length && files.length > room)
+      return room <= 0 ? `This slide already has ${limits.slideImages} pictures, the most on the ${planName(plan)} plan.` : `Pick up to ${room} picture${room === 1 ? "" : "s"}: the ${planName(plan)} plan shows ${limits.slideImages} on one slide.`;
+    return null;
+  }
+
+  /** Uploads several files one after another, with one progress bar for all. */
+  async function uploadAll(files: File[], adding: boolean): Promise<string[]> {
+    const ids: string[] = [];
+    for (let i = 0; i < files.length; i++) {
+      const video = files[i].type.startsWith("video/");
+      ids.push(await uploadFile(files[i], video, adding, (f) => setUploading((i + f) / files.length)));
+    }
+    return ids;
+  }
+
+  /** A new slide from the picked pictures (side by side) or video. */
+  async function upload(files: File[]) {
     setError("");
-    const video = file.type.startsWith("video/");
-    if (!/^(image\/(jpeg|png|webp)|video\/(mp4|webm|quicktime))$/.test(file.type)) return setError("Use a JPG, PNG or WebP picture, or an MP4, MOV or WebM video.");
-    if (!video && file.size > IMAGE_MAX) return setError("That picture is over 8 MB. Save a smaller copy (1920 pixels wide is plenty).");
-    if (video && file.size > VIDEO_MAX) return setError("That video is over 80 MB. Export it at 1080p, or at a lower bitrate.");
+    const problem = checkFiles(files, limits.slideImages);
+    if (problem) return setError(problem);
+    const video = files[0].type.startsWith("video/");
     setUploading(0);
     try {
-      const signRes = await fetch("/api/slides/sign", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ kind: video ? "video" : "image" }),
-      });
-      const signed = await signRes.json().catch(() => ({}));
-      if (!signRes.ok) throw new Error(signed.error ?? "Couldn't start the upload.");
-      const form = new FormData();
-      for (const [k, v] of Object.entries(signed.fields as Record<string, string>)) form.append(k, v);
-      form.append("file", file, file.name);
-      const uploaded = await new Promise<{ public_id: string; resource_type: string }>((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open("POST", signed.url);
-        xhr.upload.onprogress = (e) => e.total && setUploading(e.loaded / e.total);
-        xhr.onload = () => {
-          const d = JSON.parse(xhr.responseText || "{}");
-          if (xhr.status >= 200 && xhr.status < 300) resolve(d);
-          else reject(new Error(d.error?.message ? `Upload failed: ${d.error.message}` : "Upload failed."));
-        };
-        xhr.onerror = () => reject(new Error("Upload failed. Check the connection and try again."));
-        xhr.send(form);
-      });
+      const ids = await uploadAll(files, false);
       const res = await fetch("/api/slides", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          public_id: uploaded.public_id,
-          resource_type: uploaded.resource_type,
-          title: file.name.replace(/\.[^.]+$/, "").slice(0, 120),
-          position: nextPosition(),
-        }),
+        body: JSON.stringify({ kind: video ? "video" : "image", public_ids: ids, title: files[0].name.replace(/\.[^.]+$/, "").slice(0, 120), position: nextPosition() }),
       });
       const saved = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(saved.error ?? "Couldn't save the upload.");
       setSlides((all) => [...all, saved as SavedSlide]);
-      setSelected((saved as SavedSlide).id);
+      select(saved as SavedSlide);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Upload failed.");
     } finally {
       setUploading(null);
+    }
+  }
+
+  /** Saves a picture slide's new list of pictures (adding or taking some off). */
+  async function setPictures(s: SavedSlide, publicIds: string[]) {
+    const res = await fetch(`/api/slides/${s.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ public_ids: publicIds }) });
+    const saved = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(saved.error ?? "Couldn't change the pictures.");
+    setSlides((all) => all.map((x) => (x.id === s.id ? (saved as SavedSlide) : x)));
+    currentRef.current = saved as SavedSlide;
+    if (liveRef.current && selected === s.id) void screen.current?.show(toSlide(saved as SavedSlide));
+  }
+
+  async function addPictures(s: SavedSlide, files: File[]) {
+    setError("");
+    const have = s.images?.length ?? 1;
+    const problem = checkFiles(files, limits.slideImages - have);
+    if (problem) return setError(problem);
+    setUploading(0);
+    try {
+      const ids = await uploadAll(files, true);
+      await setPictures(s, [...(s.images ?? []).map((i) => i.public_id), ...ids]);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Upload failed.");
+    } finally {
+      setUploading(null);
+    }
+  }
+
+  async function removePicture(s: SavedSlide, publicId: string) {
+    setError("");
+    try {
+      await setPictures(s, (s.images ?? []).map((i) => i.public_id).filter((p) => p !== publicId));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't remove the picture.");
     }
   }
 
@@ -321,6 +388,14 @@ export function Slides({
           </div>
         </div>
 
+        {upsell && (
+          <Notice tone="info">
+            Video slides are a Pro feature, on the Paid plan.{" "}
+            <Link href="/pricing" className="font-semibold underline">
+              See plans
+            </Link>
+          </Notice>
+        )}
         {error && <Notice tone="error">{error}</Notice>}
 
         <div className="flex min-h-0 flex-1 flex-col rounded-lg bg-surface p-3">
@@ -343,6 +418,41 @@ export function Slides({
                 </IconButton>
                 {onAir === current.id && <Chip tone="live">On screen</Chip>}
               </div>
+              {/* A picture slide's pictures: add up to the plan's number, or take one off. */}
+              {current.kind === "image" && (
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  {(current.images ?? []).map((img) => (
+                    <div key={img.public_id} className="group relative h-12 w-20 overflow-hidden rounded bg-black ring-1 ring-line">
+                      {/* eslint-disable-next-line @next/next/no-img-element -- a thumbnail of the church's own picture */}
+                      <img src={img.url} alt="" className="h-full w-full object-cover" />
+                      {(current.images?.length ?? 0) > 1 && (
+                        <button
+                          type="button"
+                          aria-label="Take this picture off the slide"
+                          onClick={() => void removePicture(current, img.public_id)}
+                          className="absolute top-0.5 right-0.5 grid h-5 w-5 place-items-center rounded-full bg-black/70 text-white opacity-0 transition group-hover:opacity-100 focus:opacity-100"
+                        >
+                          <X size={11} />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  {(current.images?.length ?? 1) < limits.slideImages && (
+                    <button
+                      type="button"
+                      disabled={uploading !== null}
+                      onClick={() => addInput.current?.click()}
+                      className="grid h-12 w-20 place-items-center rounded border-2 border-dashed border-line-strong text-muted transition hover:text-ink disabled:opacity-40"
+                      title={`Add a picture beside it (up to ${limits.slideImages} on the ${planName(plan)} plan)`}
+                    >
+                      <Plus size={16} />
+                    </button>
+                  )}
+                  <span className="text-xs text-faint">
+                    {current.images?.length ?? 1} of {limits.slideImages} pictures on this slide
+                  </span>
+                </div>
+              )}
               <p className="mt-2 text-xs text-muted">
                 Click a slide or use the arrow keys to select it; while Live is on, it goes straight to the screen. Double-click a slide to go live with it.
               </p>
@@ -371,21 +481,57 @@ export function Slides({
               variant="secondary"
               loading={uploading !== null}
               disabled={full}
-              title={full ? `The ${planName(plan)} plan keeps ${limitText("slide", limit)} at a time` : "Upload a picture or video"}
+              title={full ? `The ${planName(plan)} plan keeps ${limitText("slide", limit)} at a time` : `Pick up to ${limits.slideImages} pictures for one slide, side by side`}
               onClick={() => fileInput.current?.click()}
             >
               {uploading === null ? <ImagePlus size={14} /> : null}
-              {uploading === null ? "Picture or video" : `${Math.round(uploading * 100)}%`}
+              {uploading === null ? "Pictures" : `${Math.round(uploading * 100)}%`}
+            </Button>
+            {/* Video slides are a Pro (Paid) feature: on Free the button says so. */}
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={uploading !== null || (limits.videoSlides && full)}
+              title={limits.videoSlides ? "Upload a video slide" : "Video slides are on the Paid plan"}
+              onClick={() => (limits.videoSlides ? videoInput.current?.click() : setUpsell(true))}
+            >
+              <Film size={14} /> Video
+              <span className="rounded-full bg-accent-fill px-1.5 py-px text-[9px] leading-tight font-bold tracking-wide text-on-accent">PRO</span>
             </Button>
           </div>
           <input
             ref={fileInput}
             type="file"
-            accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime,video/webm"
+            multiple
+            accept="image/jpeg,image/png,image/webp"
+            className="hidden"
+            onChange={(e) => {
+              const files = [...(e.target.files ?? [])];
+              if (files.length) void upload(files);
+              e.target.value = "";
+            }}
+          />
+          <input
+            ref={videoInput}
+            type="file"
+            accept="video/mp4,video/quicktime,video/webm"
             className="hidden"
             onChange={(e) => {
               const f = e.target.files?.[0];
-              if (f) void upload(f);
+              if (f) void upload([f]);
+              e.target.value = "";
+            }}
+          />
+          <input
+            ref={addInput}
+            type="file"
+            multiple
+            accept="image/jpeg,image/png,image/webp"
+            className="hidden"
+            onChange={(e) => {
+              const files = [...(e.target.files ?? [])];
+              const s = slides.find((x) => x.id === selected);
+              if (files.length && s) void addPictures(s, files);
               e.target.value = "";
             }}
           />
@@ -403,7 +549,7 @@ export function Slides({
         {/* The Free plan's allowance for pictures and videos; text is unlimited. */}
         {Number.isFinite(limit) && (
           <p className={`px-1 text-xs ${full ? "font-semibold text-warning" : "text-faint"}`}>
-            {mediaCount} of {limitText("slide", limit)} on the {planName(plan)} plan, each kept 7 days.
+            {mediaCount} of {limit} picture slides on the {planName(plan)} plan, up to {limits.slideImages} pictures each, kept 7 days.
             {full ? " Delete one to upload another, or upgrade to keep more." : " Text slides are unlimited."}
           </p>
         )}

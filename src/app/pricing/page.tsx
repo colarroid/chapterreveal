@@ -18,11 +18,11 @@ const FAQ: [string, string][] = [
   ],
   [
     "What's the same on both plans?",
-    "Everything that puts words on screen: hearing the preacher and the singing, every Bible translation we offer, the song library, playlists, slides, the projector and livestream outputs, history and offline Bibles.",
+    "Everything that puts words on screen: hearing the preacher and the singing, every Bible translation we offer, the song library, playlists, text and picture slides, the projector and livestream outputs, history and offline Bibles.",
   ],
   [
     "What changes on Paid?",
-    "No limits on your own pictures, videos, saved gradients or picture and video slides, and slides are kept until you delete them instead of 7 days.",
+    "Video slides, more pictures on one slide, and no limits on your own backgrounds, saved gradients or slides, which are kept until you delete them instead of 7 days.",
   ],
   [
     "Can we switch back to Free?",

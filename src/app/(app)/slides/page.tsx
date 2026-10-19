@@ -18,15 +18,19 @@ export default async function SlidesPage() {
   const { data: expired } = await supabase.rpc("take_expired_slides");
   const config = cloudinaryConfig();
   if (config && Array.isArray(expired) && expired.length) {
-    await Promise.allSettled(
-      (expired as { public_id: string | null; kind: string }[])
-        .filter((e) => e.public_id)
-        .map((e) => destroy(config, e.kind === "video" ? "video" : "image", e.public_id!)),
+    // Every picture on an expired picture slide, or the video.
+    const files = (expired as { public_id: string | null; kind: string; images?: { public_id: string }[] | null }[]).flatMap((e) =>
+      e.kind === "image" && e.images?.length
+        ? e.images.map((i) => ({ kind: "image" as const, id: i.public_id }))
+        : e.public_id
+          ? [{ kind: e.kind === "video" ? ("video" as const) : ("image" as const), id: e.public_id }]
+          : [],
     );
+    await Promise.allSettled(files.map((x) => destroy(config, x.kind, x.id)));
   }
 
   const [{ data, error }, { data: plan }] = await Promise.all([
-    supabase.from("slides").select("id, kind, title, body, image_url, position, expires_at").eq("church_id", m.churchId).order("position").order("created_at"),
+    supabase.from("slides").select("id, kind, title, body, image_url, images, position, expires_at").eq("church_id", m.churchId).order("position").order("created_at"),
     supabase.rpc("church_plan", { p_church: m.churchId }),
   ]);
   if (error) {

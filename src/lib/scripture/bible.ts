@@ -88,6 +88,8 @@ export interface Slide {
   kind?: "song" | "text" | "image" | "video";
   /** Picture and video slides: the file (this app's own storage only). */
   image?: string;
+  /** Picture slides with several pictures, side by side (the first is `image`). */
+  images?: string[];
   /** How the output draws it; added by the console as it sends the slide. */
   theme?: DisplayTheme;
 }
