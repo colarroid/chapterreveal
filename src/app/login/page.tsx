@@ -1,4 +1,6 @@
+import { redirect } from "next/navigation";
 import { AuthFlow } from "@/components/auth-flow";
+import { getSessionUser } from "@/lib/supabase/server";
 
 export const metadata = {
   title: "Sign in",
@@ -7,6 +9,8 @@ export const metadata = {
 };
 
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ link?: string; email?: string }> }) {
+  // Already signed in: straight to the console.
+  if (await getSessionUser()) redirect("/dashboard");
   const { link, email } = await searchParams;
   return (
     <AuthFlow

@@ -1,6 +1,5 @@
 import { BookOpen, Cast, Check, ClipboardPaste, Globe, Languages, ListMusic, Music, PencilLine, Play, Sparkles } from "lucide-react";
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import { Features } from "@/components/landing/features";
 import { AmbientFragments, TypedHeadline } from "@/components/landing/hero";
 import { SiteFooter, SiteHeader } from "@/components/landing/site-chrome";
@@ -82,7 +81,8 @@ const STRUCTURED_DATA = {
 };
 
 export default async function Home() {
-  if (await getSessionUser()) redirect("/dashboard");
+  // Everyone sees the home page; signed in, the header offers the console.
+  const signedIn = !!(await getSessionUser());
 
   return (
     <div className="min-h-dvh">
@@ -91,7 +91,7 @@ export default async function Home() {
       <section className="relative" style={{ background: HERO_GRADIENT }}>
         <AmbientFragments />
         <div className="relative mx-auto max-w-[60rem] px-5 sm:px-8">
-          <SiteHeader home />
+          <SiteHeader home signedIn={signedIn} />
 
           {/* Room for the floating header (24 px + 54 px) above the headline. */}
           <div className="pt-36 pb-[19rem] sm:pt-44 sm:pb-[22rem]">

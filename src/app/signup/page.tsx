@@ -1,4 +1,6 @@
+import { redirect } from "next/navigation";
 import { AuthFlow } from "@/components/auth-flow";
+import { getSessionUser } from "@/lib/supabase/server";
 
 export const metadata = {
   title: "Create your account",
@@ -8,5 +10,7 @@ export const metadata = {
 
 export default async function SignupPage({ searchParams }: { searchParams: Promise<{ invite?: string; email?: string }> }) {
   const { invite, email } = await searchParams;
+  // Already signed in: to the console, or to join with the invite.
+  if (await getSessionUser()) redirect(invite ? `/onboarding?invite=${encodeURIComponent(invite)}` : "/dashboard");
   return <AuthFlow mode="signup" invite={invite ?? ""} initialEmail={email ?? ""} />;
 }

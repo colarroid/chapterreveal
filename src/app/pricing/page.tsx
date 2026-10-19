@@ -2,6 +2,7 @@ import { headers } from "next/headers";
 import { SiteFooter, SiteHeader } from "@/components/landing/site-chrome";
 import { APP_NAME } from "@/lib/brand";
 import { DEFAULT_PRICE, formatPrice, priceFor } from "@/lib/plans";
+import { getSessionUser } from "@/lib/supabase/server";
 import { PricingPlans } from "./plans";
 
 export const metadata = {
@@ -34,9 +35,10 @@ export default async function PricingPage({ searchParams }: { searchParams: Prom
   // came from. ?country=NG (or CA, US) shows another country's prices.
   const { country } = await searchParams;
   const price = priceFor(country ?? (await headers()).get("x-vercel-ip-country"));
+  const signedIn = !!(await getSessionUser());
   return (
     <div className="min-h-dvh">
-      <SiteHeader />
+      <SiteHeader signedIn={signedIn} />
       {/* Room for the floating header (24 px + 54 px). */}
       <main className="mx-auto max-w-[60rem] px-5 pt-36 pb-24 sm:px-8 sm:pt-40">
         <div className="mx-auto max-w-2xl text-center">

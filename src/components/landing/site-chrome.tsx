@@ -8,7 +8,7 @@ import { APP_NAME } from "@/lib/brand";
  * while the page scrolls, after gettakecontrol.app (964 x 54, 8/8/8/24
  * padding, 14 px semibold links, a dark pill button).
  */
-export function SiteHeader({ home = false }: { home?: boolean }) {
+export function SiteHeader({ home = false, signedIn = false }: { home?: boolean; signedIn?: boolean }) {
   return (
     <header className="fixed inset-x-0 top-6 z-50 px-4 sm:px-6">
       <div className="mx-auto flex h-[54px] max-w-[964px] items-center justify-between gap-6 rounded-full bg-bg py-2 pr-2 pl-5 shadow-[0_4px_7px_rgba(18,18,17,0.06)] ring-1 ring-line sm:pl-6">
@@ -20,13 +20,19 @@ export function SiteHeader({ home = false }: { home?: boolean }) {
           <Link href="/pricing" className="hidden h-[38px] items-center px-3 text-ink/75 transition hover:text-ink sm:flex">
             Pricing
           </Link>
-          <Link href="/login" className="flex h-[38px] items-center px-2.5 text-ink/75 transition hover:text-ink sm:px-3">
-            Log in
-          </Link>
+          {!signedIn && (
+            <Link href="/login" className="flex h-[38px] items-center px-2.5 text-ink/75 transition hover:text-ink sm:px-3">
+              Log in
+            </Link>
+          )}
           {/* The smallest phones have no room for it beside the buttons. */}
           <ThemeToggle className="mx-1 max-[379px]:hidden" />
-          <Link href="/signup" className="flex h-[38px] items-center rounded-full bg-ink px-4 text-bg transition hover:opacity-85">
-            Sign up
+          {/* Signed in: straight back to work. */}
+          <Link
+            href={signedIn ? "/dashboard" : "/signup"}
+            className="flex h-[38px] items-center rounded-full bg-ink px-4 text-bg transition hover:opacity-85"
+          >
+            {signedIn ? "Open console" : "Sign up"}
           </Link>
         </nav>
       </div>
