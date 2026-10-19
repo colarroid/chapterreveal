@@ -35,7 +35,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
-import { HERO_GRADIENT, TypedHeadline } from "@/components/landing/hero";
+import { TypedHeadline } from "@/components/landing/hero";
 import { SiteFooter, SiteHeader } from "@/components/landing/site-chrome";
 import { APP_NAME } from "@/lib/brand";
 import { PLAN_LIMITS } from "@/lib/plans";
@@ -64,6 +64,12 @@ interface Group {
   lead: string;
   features: Feature[];
 }
+
+// The site's hero gradient with its bright band pinned to the last 9rem,
+// just under the jump links: the words stay on the dark top however tall the
+// text wraps, with no long empty glow before the first group.
+const GRADIENT =
+  "linear-gradient(180deg, #050505 0%, #06110a 20%, #072014 40%, #0a3a1e calc(100% - 9rem), #0f6330 calc(100% - 7rem), #17a64c calc(100% - 5.5rem), #1ed760 calc(100% - 4.25rem), color-mix(in srgb, #1ed760 45%, var(--bg)) calc(100% - 2.25rem), var(--bg) 100%)";
 
 const free = PLAN_LIMITS.free;
 const paid = PLAN_LIMITS.paid;
@@ -168,11 +174,10 @@ export default async function FeaturesPage() {
   return (
     <div className="min-h-dvh">
       <SiteHeader signedIn={signedIn} />
-      <section style={{ background: HERO_GRADIENT }}>
-        {/* Room for the floating header (24 px + 54 px) above the headline, and
-            below the buttons for the gradient's bright band, so the words all
-            sit on its dark top. */}
-        <div className="mx-auto max-w-[60rem] px-5 pt-36 pb-[18rem] sm:px-8 sm:pt-44 sm:pb-[20rem]">
+      <section style={{ background: GRADIENT }}>
+        {/* Room for the floating header (24 px + 54 px) above the headline,
+            and for the bright band (GRADIENT) below the jump links. */}
+        <div className="mx-auto max-w-[60rem] px-5 pt-36 pb-[10rem] sm:px-8 sm:pt-44">
           <div className="text-white">
             <TypedHeadline lines={["Everything it does,", "for every service."]} />
             <p className="mt-10 max-w-[33rem] text-base leading-[1.35] font-medium tracking-[-0.01em] sm:mt-14">
