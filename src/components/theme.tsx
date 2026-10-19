@@ -2,7 +2,7 @@
 
 import { Moon, Sun } from "lucide-react";
 import { useEffect, useState } from "react";
-import { THEME_KEY as KEY } from "@/lib/theme-script";
+import { THEME_KEY as KEY, LOCKED_THEME } from "@/lib/theme-script";
 
 // The chosen theme lives on <html data-theme>. With nothing saved, the CSS
 // follows the system setting. The output screen ignores all of this: it is
@@ -16,7 +16,13 @@ function resolved(): Theme {
   return matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
-export function ThemeToggle({ className = "", onDark = false }: { className?: string; onDark?: boolean }) {
+export function ThemeToggle(props: { className?: string; onDark?: boolean }) {
+  // One theme for everyone for now (LOCKED_THEME): nothing to choose.
+  if (LOCKED_THEME) return null;
+  return <Toggle {...props} />;
+}
+
+function Toggle({ className = "", onDark = false }: { className?: string; onDark?: boolean }) {
   const [theme, setTheme] = useState<Theme | null>(null);
 
   useEffect(() => {

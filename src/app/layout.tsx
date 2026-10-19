@@ -4,7 +4,7 @@ import { Analytics } from "@/components/analytics";
 import { ConfirmHost } from "@/components/confirm";
 import { OfflineSupport } from "@/components/offline";
 import { compatScript } from "@/lib/compat-script";
-import { themeScript } from "@/lib/theme-script";
+import { LOCKED_THEME, themeScript } from "@/lib/theme-script";
 import { APP_NAME, SITE_DESCRIPTION, SITE_KEYWORDS, SITE_TITLE, SITE_URL } from "@/lib/brand";
 import "./globals.css";
 
@@ -48,16 +48,22 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
-    { media: "(prefers-color-scheme: dark)", color: "#121212" },
-  ],
+  themeColor:
+    LOCKED_THEME === "light"
+      ? "#ffffff"
+      : LOCKED_THEME === "dark"
+        ? "#121212"
+        : [
+            { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+            { media: "(prefers-color-scheme: dark)", color: "#121212" },
+          ],
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     // The theme script sets data-theme before React hydrates.
-    <html lang="en" suppressHydrationWarning>
+    // A locked theme is in the HTML itself, so it holds even before scripts run.
+    <html lang="en" data-theme={LOCKED_THEME ?? undefined} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
         {/* Tells people on browsers too old for the app what to use instead. */}
