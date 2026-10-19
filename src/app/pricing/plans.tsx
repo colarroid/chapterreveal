@@ -28,10 +28,10 @@ export function PricingPlans({ price }: { price: Price }) {
   const perMonthText = money(price.currency === "NGN" ? Math.round(perMonth) : Math.round(perMonth * 100) / 100);
 
   return (
-    <div className="mt-12">
-      {/* Monthly / Annual */}
-      <div className="flex justify-center">
-        <div role="radiogroup" aria-label="Billing" className="inline-flex items-center rounded-full bg-surface p-1">
+    <div className="mt-10 sm:mt-12">
+      {/* Monthly / Annual, on the dark top of the gradient. */}
+      <div className="flex">
+        <div role="radiogroup" aria-label="Billing" className="inline-flex items-center rounded-full bg-white/10 p-1 ring-1 ring-white/15">
           {([
             [false, "Monthly"],
             [true, "Annual"],
@@ -42,10 +42,10 @@ export function PricingPlans({ price }: { price: Price }) {
               role="radio"
               aria-checked={yearly === value}
               onClick={() => setYearly(value)}
-              className={`flex h-9 items-center gap-2 rounded-full px-5 text-sm transition ${yearly === value ? "bg-bg font-bold text-ink shadow-[0_1px_3px_rgba(0,0,0,0.12)]" : "text-muted hover:text-ink"}`}
+              className={`flex h-9 items-center gap-2 rounded-full px-5 text-sm transition ${yearly === value ? "bg-white font-bold text-black" : "text-white/75 hover:text-white"}`}
             >
               {label}
-              {value && <span className="rounded-full bg-accent-fill/15 px-2 py-0.5 text-[11px] font-bold text-accent">Save {saving}%</span>}
+              {value && <span className="rounded-full bg-accent-fill px-2 py-0.5 text-[11px] font-bold text-on-accent">Save {saving}%</span>}
             </button>
           ))}
         </div>
@@ -96,7 +96,7 @@ export function PricingPlans({ price }: { price: Price }) {
           </div>
         </div>
       </div>
-      <p className="mt-6 text-center text-sm text-muted">
+      <p className="mt-6 text-center text-sm text-ink/60">
         Every church starts on Free. Prices in {price.currency === "NGN" ? "Nigerian naira" : price.currency === "CAD" ? "Canadian dollars" : "US dollars"}.
       </p>
     </div>

@@ -9,6 +9,10 @@ import { useReducedMotion } from "./use-playback";
 const CHAR_MS = 34;
 const LINE_PAUSE_MS = 380;
 
+/** The public pages' hero background: near-black into ReedArk green, fading into the page. */
+export const HERO_GRADIENT =
+  "linear-gradient(180deg, #050505 0%, #06110a 18%, #072014 34%, #0a3a1e 48%, #0f6330 60%, #17a64c 70%, #1ed760 76%, color-mix(in srgb, #1ed760 45%, var(--bg)) 84%, var(--bg) 100%)";
+
 export function TypedHeadline({ lines }: { lines: string[] }) {
   const reduced = useReducedMotion();
   const total = lines.reduce((n, l) => n + l.length, 0);

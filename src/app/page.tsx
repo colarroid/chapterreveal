@@ -1,7 +1,7 @@
 import { BookOpen, Cast, Check, ClipboardPaste, Globe, Languages, ListMusic, Music, PencilLine, Play, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { Features } from "@/components/landing/features";
-import { AmbientFragments, TypedHeadline } from "@/components/landing/hero";
+import { AmbientFragments, HERO_GRADIENT, TypedHeadline } from "@/components/landing/hero";
 import { SiteFooter, SiteHeader } from "@/components/landing/site-chrome";
 import { APP_NAME, SITE_DESCRIPTION, SITE_URL } from "@/lib/brand";
 import { getSessionUser } from "@/lib/supabase/server";
@@ -49,8 +49,6 @@ const HIGHLIGHTS = [
   { icon: Globe, title: "Nothing to install", body: "Runs in Chrome or Edge. Log in from any computer." },
 ];
 
-const HERO_GRADIENT =
-  "linear-gradient(180deg, #050505 0%, #06110a 18%, #072014 34%, #0a3a1e 48%, #0f6330 60%, #17a64c 70%, #1ed760 76%, color-mix(in srgb, #1ed760 45%, var(--bg)) 84%, var(--bg) 100%)";
 
 export const metadata = { alternates: { canonical: "/" } };
 

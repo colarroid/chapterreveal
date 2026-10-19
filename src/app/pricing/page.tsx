@@ -3,6 +3,7 @@ import { SiteFooter, SiteHeader } from "@/components/landing/site-chrome";
 import { APP_NAME } from "@/lib/brand";
 import { DEFAULT_PRICE, formatPrice, priceFor } from "@/lib/plans";
 import { getSessionUser } from "@/lib/supabase/server";
+import { HERO_GRADIENT, TypedHeadline } from "@/components/landing/hero";
 import { PricingPlans } from "./plans";
 
 export const metadata = {
@@ -39,16 +40,27 @@ export default async function PricingPage({ searchParams }: { searchParams: Prom
   return (
     <div className="min-h-dvh">
       <SiteHeader signedIn={signedIn} />
-      {/* Room for the floating header (24 px + 54 px). */}
-      <main className="mx-auto max-w-[60rem] px-5 pt-36 pb-24 sm:px-8 sm:pt-40">
-        <div className="mx-auto max-w-2xl text-center">
-          <h1 className="text-[clamp(2.2rem,6vw,3.5rem)] leading-[1.05] font-semibold tracking-[-0.03em] text-balance">Simple pricing for every church</h1>
-          <p className="mt-4 text-lg text-muted text-balance">Start free, with everything that puts scripture and lyrics on screen. Upgrade when your church needs more room.</p>
+      {/* After terms.so's pricing page: a tall gradient with the headline and
+          a short intro on the left, and the plans sitting where it fades into
+          the page. ReedArk's own gradient, type and words. */}
+      <section style={{ background: HERO_GRADIENT }}>
+        {/* Room for the floating header (24 px + 54 px) above the headline. */}
+        <div className="mx-auto max-w-[60rem] px-5 pt-36 pb-10 sm:px-8 sm:pt-44">
+          {/* White on the dark top of the gradient; the plans below keep the page's colours. */}
+          <div className="text-white">
+            <TypedHeadline lines={["Simple pricing", "for every church."]} />
+            <p className="mt-10 max-w-[31rem] text-base leading-[1.35] font-medium tracking-[-0.01em] sm:mt-14">
+              <strong className="text-white/90">Start free, with everything that puts scripture and lyrics on screen.</strong>{" "}
+              <span className="text-white/60">Upgrade when your church needs more room. No card needed, and every church begins on Free.</span>
+            </p>
+          </div>
+          <PricingPlans price={price} />
         </div>
+      </section>
 
-        <PricingPlans price={price} />
+      <main className="mx-auto max-w-[60rem] px-5 pb-24 sm:px-8">
 
-        <section className="mx-auto mt-24 max-w-2xl">
+        <section className="mx-auto mt-16 max-w-2xl">
           <h2 className="text-2xl font-semibold tracking-[-0.02em]">Questions</h2>
           <dl className="mt-6 divide-y divide-line border-y border-line">
             {FAQ.map(([q, a]) => (
