@@ -165,11 +165,11 @@ export function Settings(p: Props) {
               <CopyRow label="Scripture Projection Lower Third (Green background)" value={`${out}/scripture/lower`} />
               <CopyRow label="Lyrics Projection Full Screen" value={`${out}/lyrics`} />
               <CopyRow label="Lyrics Projection Lower Third (Green background)" value={`${out}/lyrics/lower`} />
-              <CopyRow label="Scripture Frame (see-through, any size)" value={`${out}/scripture/frame`} />
-              <CopyRow label="Lyrics Frame (see-through, any size)" value={`${out}/lyrics/frame`} />
+              <CopyRow label="Scripture Frame (Green background, any size)" value={`${out}/scripture/frame`} />
+              <CopyRow label="Lyrics Frame (Green background, any size)" value={`${out}/lyrics/frame`} />
               <p className="text-xs text-muted">
                 Set browser inputs to 1920 × 1080, except the Frames: set those to the size of the text area in your own lower-third design, then place them
-                on it. The words fill the frame, on a see-through background (add ?bg=green to the link for green, in vMix). Each scripture or lyrics
+                on it. The words fill the frame, on green to key out (add ?bg=clear to the link for a see-through background instead). Each scripture or lyrics
                 output goes blank while the other kind is on screen. Anyone with these links
                 can see what is on screen, but only signed-in members of your church can put anything on it.
               </p>
