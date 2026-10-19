@@ -442,13 +442,17 @@ export function DisplayEditor({
                 />
               </div>
             </div>
-            <Slider label="Size" value={Math.round(lower.scale * 100)} min={70} max={160} step={5} format={(v) => `${v}%`} onChange={(v) => setLower({ scale: v / 100 })} />
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Slider label="Box width" value={lower.width} min={30} max={100} step={5} format={(v) => `${v}%`} onChange={(v) => setLower({ width: v })} />
+              <Slider label="Box height" value={lower.height} min={15} max={60} step={1} format={(v) => `${v}%`} onChange={(v) => setLower({ height: v })} />
+            </div>
+            <Slider label="Largest text size" value={Math.round(lower.scale * 100)} min={70} max={160} step={5} format={(v) => `${v}%`} onChange={(v) => setLower({ scale: v / 100 })} />
             <label className="flex items-center gap-2 text-sm font-semibold">
               <input type="checkbox" checked={lower.uppercase} onChange={(e) => setLower({ uppercase: e.target.checked })} className="h-4 w-4 accent-[var(--color-accent-fill)]" />
               ALL CAPITALS
             </label>
             <p className="text-xs text-muted">
-              For the {kind === "scripture" ? "Scripture" : "Lyrics"} Lower Third outputs. The font comes from Words above; the projector isn&apos;t affected.
+              For the {kind === "scripture" ? "Scripture" : "Lyrics"} Lower Third outputs. The words wrap across the box and size themselves to fill it, up to the largest size, so long verses always fit. The font comes from Words above; the projector isn&apos;t affected.
             </p>
           </Panel>
         </div>

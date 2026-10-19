@@ -19,15 +19,19 @@ export type FontKey = "serif" | "sans" | "bold" | "elegant";
 export interface LowerThird {
   position: "bottom" | "top";
   align: "left" | "center";
-  /** Text size, as a multiple of the automatic size (0.7 to 1.6). */
+  /** The largest the text may be, as a multiple of the standard size (0.7 to 1.6). */
   scale: number;
   uppercase: boolean;
+  /** The text box: width as % of the space between the side margins (30 to 100). */
+  width: number;
+  /** ...and height as % of the screen's height (15 to 60). The words wrap and size to fit it. */
+  height: number;
 }
 
 /** The key colour behind the livestream outputs: pure green (#00FF00), what the church keys on. */
 export const CHROMA_GREEN = "#00ff00";
 
-export const DEFAULT_LOWER: LowerThird = { position: "bottom", align: "left", scale: 1, uppercase: false };
+export const DEFAULT_LOWER: LowerThird = { position: "bottom", align: "left", scale: 1, uppercase: false, width: 100, height: 34 };
 
 export interface DisplayTheme {
   /** The ready-made theme it started from, for the picker. */
@@ -187,6 +191,8 @@ function cleanLower(v: unknown): LowerThird {
     align: l.align === "center" ? "center" : "left",
     scale: clamp(l.scale, 0.7, 1.6, 1),
     uppercase: l.uppercase === true,
+    width: Math.round(clamp(l.width, 30, 100, DEFAULT_LOWER.width)),
+    height: Math.round(clamp(l.height, 15, 60, DEFAULT_LOWER.height)),
   };
 }
 

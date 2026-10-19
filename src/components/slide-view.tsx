@@ -1,4 +1,4 @@
-import { memo, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import { memo, useEffect, useLayoutEffect, useRef, type CSSProperties } from "react";
 import { backgroundCss, DEFAULT_DISPLAY, DEFAULT_LOWER, FONTS, type Background, type DisplayTheme } from "@/lib/display/theme";
 import type { Slide } from "@/lib/scripture/bible";
 
@@ -6,24 +6,26 @@ export type SlideLayout = "full" | "lower";
 
 // Sizes are in container width units (cqw) so the console's small preview
 // and the real 1920px output are the same picture at different scales.
+/**
+ * Lower thirds: the words fill a box the church sizes (width and height, see
+ * LowerThird). They start at the largest size allowed (LOWER_MAX times the
+ * Size setting), wrap across the box's width, and come down until they fit
+ * its height, so a short verse is large and a long one never runs off.
+ */
+const LOWER_MAX = 3.6; // cqw at Size 100%
+const MIN_FIT = 0.2;
+
 function textSize(chars: number, layout: SlideLayout): number {
-  if (layout === "lower") return chars < 140 ? 2.6 : chars < 220 ? 2.2 : 1.9;
+  if (layout === "lower") return LOWER_MAX;
   if (chars < 80) return 5.6;
   if (chars < 160) return 4.6;
   if (chars < 240) return 3.9;
   return 3.4;
 }
 
-/**
- * The lower third's text box, as tall as about a third of a 16:9 screen
- * (56.25cqw high). Words that don't fit at the chosen size wrap first, then
- * shrink until they do, so a long verse never runs off the screen.
- */
-const LOWER_BOX = 19; // cqw
-const MIN_FIT = 0.45;
 
 function songSize(chars: number, lines: number, layout: SlideLayout): number {
-  if (layout === "lower") return lines > 2 || chars > 90 ? 2.4 : 2.9;
+  if (layout === "lower") return LOWER_MAX;
   if (lines <= 2 && chars < 70) return 6;
   if (lines <= 3 && chars < 130) return 5;
   if (lines <= 4 && chars < 200) return 4.2;
@@ -109,25 +111,53 @@ export const SlideView = memo(function SlideView({
     textTransform: (lower ? lt.uppercase : t.uppercase) ? "uppercase" : undefined,
     textShadow: chroma ? chromaEdge : t.shadow && !lower ? "0 0.06em 0.3em rgba(0,0,0,0.7)" : undefined,
   };
-  // Lower third: shrunk (fit) until the words fit the box, measured before
-  // the screen paints, so the too-big size never shows.
+  // Lower third: the largest size (--fit, 0.2 to 1) at which the words fit
+  // the box, found by measuring before the screen paints (a few quick
+  // layouts, no re-render), so a wrong size never shows.
   const box = useRef<HTMLDivElement>(null);
-  const [fit, setFit] = useState(1);
-  const fitKey = lower && slide ? `${slide.label}|${chars}|${lt.scale}|${lt.uppercase}|${t.font}` : "";
-  useLayoutEffect(() => setFit(1), [fitKey]);
+  const fitKey = lower && slide ? `${slide.label}|${slide.lines.map((l) => l.text).join("|")}|${JSON.stringify(lt)}|${t.font}` : "";
   useLayoutEffect(() => {
     const el = box.current;
-    if (!lower || !el || fit <= MIN_FIT) return;
-    if (el.scrollHeight > el.clientHeight + 1) setFit((f) => Math.max(MIN_FIT, f * 0.92));
-  }, [lower, fit, fitKey]);
-  const scale = lower ? lt.scale * fit : t.scale;
-  const small = (n: number) => `${(lower ? n * 0.75 * fit : n).toFixed(2)}cqw`;
+    if (!lower || !el) return;
+    const fitText = () => {
+      const fits = () => el.scrollHeight <= el.clientHeight + 1 && el.scrollWidth <= el.clientWidth + 1;
+      el.style.setProperty("--fit", "1");
+      if (fits()) return;
+      let lo = MIN_FIT;
+      let hi = 1;
+      for (let i = 0; i < 10; i++) {
+        const mid = (lo + hi) / 2;
+        el.style.setProperty("--fit", String(mid));
+        if (fits()) lo = mid;
+        else hi = mid;
+      }
+      el.style.setProperty("--fit", String(lo));
+    };
+    fitText();
+    // Measured again when a font finishes loading (its widths differ from the
+    // stand-in), and once more on the next frame in case anything shifted.
+    const fonts = document.fonts;
+    fonts?.addEventListener("loadingdone", fitText);
+    let frame = requestAnimationFrame(() => {
+      frame = 0;
+      if (el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > el.clientWidth + 1) fitText();
+    });
+    void fonts?.ready.then(fitText);
+    return () => {
+      fonts?.removeEventListener("loadingdone", fitText);
+      if (frame) cancelAnimationFrame(frame);
+    };
+  }, [lower, fitKey]);
+  const scale = lower ? lt.scale : t.scale;
+  // Lower-third sizes follow --fit; the projector's are plain.
+  const sized = (cqw: number) => (lower ? `calc(${cqw.toFixed(3)}cqw * var(--fit, 1))` : `${cqw}cqw`);
+  const small = (n: number) => sized(lower ? n * 0.75 : n);
 
   const body =
     slide?.kind === "song" || slide?.kind === "text" ? (
       // Lyrics: one line per line, larger, nothing else but the credit.
       <>
-        <p className="leading-[1.25] text-balance" style={{ ...words, fontSize: `${songSize(chars, slide.lines.length, layout) * scale}cqw` }}>
+        <p className="leading-[1.25] text-balance" style={{ ...words, fontSize: sized(songSize(chars, slide.lines.length, layout) * scale) }}>
           {slide.lines.map((l, i) => (
             <span key={i} className="block">
               {l.text}
@@ -143,7 +173,7 @@ export const SlideView = memo(function SlideView({
     ) : (
       slide && (
         <>
-          <p className="leading-[1.32] text-balance" style={{ ...words, fontSize: `${textSize(chars, layout) * scale}cqw` }}>
+          <p className="leading-[1.32] text-balance" style={{ ...words, fontSize: sized(textSize(chars, layout) * scale) }}>
             {slide.lines.map((l) => (
               <span key={`${l.verse}-${l.text.slice(0, 12)}`}>
                 {many && (
@@ -214,7 +244,13 @@ export const SlideView = memo(function SlideView({
           className={`absolute inset-x-0 ${top ? "top-0 pt-[3.2cqw]" : "bottom-0 pb-[3.2cqw]"} ${band} ${lt.align === "center" ? "text-center" : ""} px-[6cqw] transition-opacity duration-150 ${on ? "opacity-100" : "opacity-0"}`}
           style={{ color: textColor }}
         >
-          <div ref={box} className="overflow-hidden" style={{ maxHeight: `${LOWER_BOX}cqw` }}>
+          {/* The text box: its width (of the space between the margins) and
+              height (of the screen's, 56.25cqw on 16:9) come from the settings. */}
+          <div
+            ref={box}
+            className={`overflow-hidden ${lt.align === "center" ? "mx-auto" : ""}`}
+            style={{ width: `${lt.width}%`, maxHeight: `${((lt.height / 100) * 56.25).toFixed(2)}cqw` }}
+          >
             {body}
           </div>
         </div>
