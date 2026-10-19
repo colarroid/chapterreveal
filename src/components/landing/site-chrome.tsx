@@ -17,6 +17,9 @@ export function SiteHeader({ home = false, signedIn = false }: { home?: boolean;
           <a href={home ? "#how" : "/#how"} className="hidden h-[38px] items-center px-3 text-ink/75 transition hover:text-ink md:flex">
             How it works
           </a>
+          <Link href="/features" className="hidden h-[38px] items-center px-3 text-ink/75 transition hover:text-ink sm:flex">
+            Features
+          </Link>
           <Link href="/pricing" className="hidden h-[38px] items-center px-3 text-ink/75 transition hover:text-ink sm:flex">
             Pricing
           </Link>
@@ -58,6 +61,11 @@ export function SiteFooter({ home = false }: { home?: boolean }) {
               <a href={home ? "#how" : "/#how"} className="hover:text-ink">
                 How it works
               </a>
+            </li>
+            <li>
+              <Link href="/features" className="hover:text-ink">
+                Features
+              </Link>
             </li>
             <li>
               <Link href="/pricing" className="hover:text-ink">
