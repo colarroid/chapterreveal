@@ -437,6 +437,7 @@ export function DisplayEditor({
                   options={[
                     ["left", "Left"],
                     ["center", "Centre"],
+                    ["right", "Right"],
                   ]}
                   onChange={(v) => setLower({ align: v as LowerThird["align"] })}
                 />
@@ -451,8 +452,9 @@ export function DisplayEditor({
               <input type="checkbox" checked={lower.uppercase} onChange={(e) => setLower({ uppercase: e.target.checked })} className="h-4 w-4 accent-[var(--color-accent-fill)]" />
               ALL CAPITALS
             </label>
+            <ColorField label="Text colour in the Frame outputs" value={lower.color} onChange={(c) => setLower({ color: c })} />
             <p className="text-xs text-muted">
-              For the {kind === "scripture" ? "Scripture" : "Lyrics"} Lower Third outputs. The words wrap across the box and size themselves to fill it, up to the largest size, so long verses always fit. The font comes from Words above; the projector isn&apos;t affected.
+              For the {kind === "scripture" ? "Scripture" : "Lyrics"} Lower Third outputs. The words wrap across the box and size themselves to fill it, up to the largest size, so long verses always fit. The Frame outputs use the same capitals, size and alignment, filling whatever size your OBS source is. The font comes from Words above; the projector isn&apos;t affected.
             </p>
           </Panel>
         </div>
@@ -469,8 +471,18 @@ export function DisplayEditor({
               <SlideView slide={SAMPLE[kind]} theme={theme} layout="lower" chroma={CHROMA_GREEN} />
             </div>
           </div>
+          {/* A frame as wide and short as a typical lower-third text area, on a
+              checkerboard: what OBS lays over the church's own design. */}
+          <div
+            className="mt-3 overflow-hidden rounded-lg ring-1 ring-line"
+            style={{ background: "repeating-conic-gradient(#d4d4d4 0% 25%, #ffffff 0% 50%) 0 0 / 16px 16px" }}
+          >
+            <div className="aspect-[1100/160]">
+              <SlideView slide={SAMPLE[kind]} theme={theme} layout="frame" />
+            </div>
+          </div>
           <p className="mt-2 text-xs text-muted">
-            Top: the projector. Below: the lower third on green, as vMix or OBS receives it. After saving, open consoles on this computer switch at once; others the next time they&apos;re opened.
+            Top: the projector. Then the lower third on green, and a Frame output (see-through, shown on squares) at 1100 × 160. After saving, open consoles on this computer switch at once; others the next time they&apos;re opened.
           </p>
         </div>
       </div>

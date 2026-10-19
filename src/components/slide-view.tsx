@@ -2,7 +2,12 @@ import { memo, useEffect, useLayoutEffect, useRef, type CSSProperties } from "re
 import { backgroundCss, DEFAULT_DISPLAY, DEFAULT_LOWER, FONTS, type Background, type DisplayTheme } from "@/lib/display/theme";
 import type { Slide } from "@/lib/scripture/bible";
 
-export type SlideLayout = "full" | "lower";
+/**
+ * "full": the whole screen, in the church's look. "lower": a lower third on
+ * a 16:9 screen. "frame": the words alone, filling whatever box they're given
+ * (an OBS browser source sized to the text area of the church's own design).
+ */
+export type SlideLayout = "full" | "lower" | "frame";
 
 // Sizes are in container width units (cqw) so the console's small preview
 // and the real 1920px output are the same picture at different scales.
@@ -16,7 +21,7 @@ const LOWER_MAX = 3.6; // cqw at Size 100%
 const MIN_FIT = 0.2;
 
 function textSize(chars: number, layout: SlideLayout): number {
-  if (layout === "lower") return LOWER_MAX;
+  if (layout !== "full") return LOWER_MAX;
   if (chars < 80) return 5.6;
   if (chars < 160) return 4.6;
   if (chars < 240) return 3.9;
@@ -25,7 +30,7 @@ function textSize(chars: number, layout: SlideLayout): number {
 
 
 function songSize(chars: number, lines: number, layout: SlideLayout): number {
-  if (layout === "lower") return LOWER_MAX;
+  if (layout !== "full") return LOWER_MAX;
   if (lines <= 2 && chars < 70) return 6;
   if (lines <= 3 && chars < 130) return 5;
   if (lines <= 4 && chars < 200) return 4.2;
@@ -94,7 +99,9 @@ export const SlideView = memo(function SlideView({
 
   // The lower third keeps its own look: white words on a dark band (or, on
   // green, on nothing).
-  const lower = layout === "lower";
+  const frame = layout === "frame";
+  // The frame takes the lower third's settings (capitals, size, alignment, colour).
+  const lower = layout === "lower" || frame;
   // Its own position, size and capitals (a look saved before it had them gets the defaults).
   const lt = t.lower ?? DEFAULT_LOWER;
   // On a key colour (green screen) nothing may be green: the keyer removes
@@ -103,8 +110,9 @@ export const SlideView = memo(function SlideView({
   // dark edge to stay readable over the video. The edge has no blur: a soft
   // shadow is half see-through, and comes out as a green haze once keyed.
   const chromaEdge = "0.045em 0.045em 0 #000, -0.02em -0.02em 0 #000, 0.02em -0.02em 0 #000, -0.02em 0.02em 0 #000";
-  const textColor = lower || chroma ? "#ffffff" : t.textColor;
-  const accent = chroma ? "#ffffff" : lower ? "#1ed760" : t.accentColor;
+  // A frame's words are the colour the church picks, to match its design.
+  const textColor = frame ? lt.color : lower || chroma ? "#ffffff" : t.textColor;
+  const accent = frame ? lt.color : chroma ? "#ffffff" : lower ? "#1ed760" : t.accentColor;
   const words: CSSProperties = {
     fontFamily: font.family,
     fontWeight: font.weight,
@@ -143,14 +151,32 @@ export const SlideView = memo(function SlideView({
       if (el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > el.clientWidth + 1) fitText();
     });
     void fonts?.ready.then(fitText);
+    // And when the screen or frame changes size (a resized OBS source). Its
+    // size never depends on the words, so fitting can't set this off again.
+    const root = el.closest("[data-slide-root]");
+    let last = "";
+    const resized = new ResizeObserver(([e]) => {
+      const size = `${Math.round(e.contentRect.width)}x${Math.round(e.contentRect.height)}`;
+      if (last && size !== last) fitText();
+      last = size;
+    });
+    if (root) resized.observe(root);
     return () => {
+      resized.disconnect();
       fonts?.removeEventListener("loadingdone", fitText);
       if (frame) cancelAnimationFrame(frame);
     };
   }, [lower, fitKey]);
   const scale = lower ? lt.scale : t.scale;
-  // Lower-third sizes follow --fit; the projector's are plain.
-  const sized = (cqw: number) => (lower ? `calc(${cqw.toFixed(3)}cqw * var(--fit, 1))` : `${cqw}cqw`);
+  // Lower-third sizes follow --fit; the projector's are plain. A frame can be
+  // any shape (long and thin, or square), so its words start from whichever
+  // of its height or width is tighter.
+  const sized = (cqw: number) =>
+    frame
+      ? `calc(min(40cqh, 9cqw) * ${(cqw / LOWER_MAX).toFixed(3)} * var(--fit, 1))`
+      : lower
+        ? `calc(${cqw.toFixed(3)}cqw * var(--fit, 1))`
+        : `${cqw}cqw`;
   const small = (n: number) => sized(lower ? n * 0.75 : n);
 
   const body =
@@ -228,6 +254,24 @@ export const SlideView = memo(function SlideView({
     );
   }
 
+  const alignText = lt.align === "center" ? "text-center" : lt.align === "right" ? "text-right" : "";
+
+  if (frame) {
+    // Nothing but the words, filling the frame: see-through behind them (OBS
+    // browser sources show the page's transparency), or green for vMix.
+    return (
+      <div data-slide-root className="relative h-full w-full overflow-hidden [container-type:size]" style={{ background: chroma ?? "transparent" }}>
+        <div
+          ref={box}
+          className={`flex h-full w-full flex-col justify-center overflow-hidden px-[1.5cqw] py-[5cqh] ${alignText} transition-opacity duration-150 ${on ? "opacity-100" : "opacity-0"}`}
+          style={{ color: textColor }}
+        >
+          {body}
+        </div>
+      </div>
+    );
+  }
+
   if (lower) {
     const top = lt.position === "top";
     // On green (livestream output) there's no band at all: the words sit on
@@ -239,16 +283,16 @@ export const SlideView = memo(function SlideView({
         ? "bg-gradient-to-b from-black/90 via-black/80 to-black/0 pb-[4cqw]"
         : "bg-gradient-to-t from-black/90 via-black/80 to-black/0 pt-[4cqw]";
     return (
-      <div className="relative h-full w-full overflow-hidden [container-type:inline-size]" style={chroma ? { background: chroma } : undefined}>
+      <div data-slide-root className="relative h-full w-full overflow-hidden [container-type:inline-size]" style={chroma ? { background: chroma } : undefined}>
         <div
-          className={`absolute inset-x-0 ${top ? "top-0 pt-[3.2cqw]" : "bottom-0 pb-[3.2cqw]"} ${band} ${lt.align === "center" ? "text-center" : ""} px-[6cqw] transition-opacity duration-150 ${on ? "opacity-100" : "opacity-0"}`}
+          className={`absolute inset-x-0 ${top ? "top-0 pt-[3.2cqw]" : "bottom-0 pb-[3.2cqw]"} ${band} ${alignText} px-[6cqw] transition-opacity duration-150 ${on ? "opacity-100" : "opacity-0"}`}
           style={{ color: textColor }}
         >
           {/* The text box: its width (of the space between the margins) and
               height (of the screen's, 56.25cqw on 16:9) come from the settings. */}
           <div
             ref={box}
-            className={`overflow-hidden ${lt.align === "center" ? "mx-auto" : ""}`}
+            className={`overflow-hidden ${lt.align === "center" ? "mx-auto" : lt.align === "right" ? "ml-auto" : ""}`}
             style={{ width: `${lt.width}%`, maxHeight: `${((lt.height / 100) * 56.25).toFixed(2)}cqw` }}
           >
             {body}

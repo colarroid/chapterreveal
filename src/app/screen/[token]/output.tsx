@@ -77,9 +77,9 @@ export function OutputScreen({
   const needsClick = present && !fullscreen;
 
   useEffect(() => {
-    // vMix keys out a transparent page for the lower-third layout; the online
-    // output is keyed on its green instead.
-    if (layout === "lower" && !online) {
+    // A see-through page for the lower third and the frame: OBS shows what's
+    // behind it, vMix keys it out. Green outputs are keyed on their green instead.
+    if ((layout === "lower" || layout === "frame") && !online) {
       document.documentElement.style.background = "transparent";
       document.body.style.background = "transparent";
     }

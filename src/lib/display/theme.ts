@@ -18,7 +18,9 @@ export type FontKey = "serif" | "sans" | "bold" | "elegant";
  */
 export interface LowerThird {
   position: "bottom" | "top";
-  align: "left" | "center";
+  align: "left" | "center" | "right";
+  /** Words in the frame outputs (see-through or green behind them). The green lower thirds stay white. */
+  color: string;
   /** The largest the text may be, as a multiple of the standard size (0.7 to 1.6). */
   scale: number;
   uppercase: boolean;
@@ -31,7 +33,7 @@ export interface LowerThird {
 /** The key colour behind the livestream outputs: pure green (#00FF00), what the church keys on. */
 export const CHROMA_GREEN = "#00ff00";
 
-export const DEFAULT_LOWER: LowerThird = { position: "bottom", align: "left", scale: 1, uppercase: false, width: 100, height: 34 };
+export const DEFAULT_LOWER: LowerThird = { position: "bottom", align: "left", color: "#ffffff", scale: 1, uppercase: false, width: 100, height: 34 };
 
 export interface DisplayTheme {
   /** The ready-made theme it started from, for the picker. */
@@ -188,7 +190,8 @@ function cleanLower(v: unknown): LowerThird {
   const l = (v ?? {}) as Record<string, unknown>;
   return {
     position: l.position === "top" ? "top" : "bottom",
-    align: l.align === "center" ? "center" : "left",
+    align: l.align === "center" || l.align === "right" ? l.align : "left",
+    color: color(l.color, DEFAULT_LOWER.color),
     scale: clamp(l.scale, 0.7, 1.6, 1),
     uppercase: l.uppercase === true,
     width: Math.round(clamp(l.width, 30, 100, DEFAULT_LOWER.width)),
