@@ -13,7 +13,14 @@ const LINE_PAUSE_MS = 380;
 export const HERO_GRADIENT =
   "linear-gradient(180deg, #050505 0%, #06110a 18%, #072014 34%, #0a3a1e 48%, #0f6330 60%, #17a64c 70%, #1ed760 76%, color-mix(in srgb, #1ed760 45%, var(--bg)) 84%, var(--bg) 100%)";
 
-export function TypedHeadline({ lines }: { lines: string[] }) {
+export function TypedHeadline({
+  lines,
+  size = "text-[2.6rem] sm:text-[3.6rem] lg:text-[4.1rem]",
+}: {
+  lines: string[];
+  /** Font size classes, small screens up. */
+  size?: string;
+}) {
   const reduced = useReducedMotion();
   const total = lines.reduce((n, l) => n + l.length, 0);
   const [shown, setShown] = useState(0);
@@ -42,7 +49,7 @@ export function TypedHeadline({ lines }: { lines: string[] }) {
   const ends = lines.reduce<number[]>((acc, l) => [...acc, (acc.at(-1) ?? 0) + l.length], []);
   const caretLine = Math.max(0, ends.findIndex((e) => e >= shown));
   return (
-    <h1 className="text-[2.6rem] leading-[1.0] font-medium tracking-[-0.03em] sm:text-[3.6rem] lg:text-[4.1rem]">
+    <h1 className={`leading-[1.0] font-medium tracking-[-0.03em] ${size}`}>
       {/* The full sentence for screen readers, whatever the animation is doing. */}
       <span className="sr-only">{lines.join(" ")}</span>
       <span aria-hidden>

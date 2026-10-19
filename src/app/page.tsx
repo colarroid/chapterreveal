@@ -11,7 +11,7 @@ import { getSessionUser } from "@/lib/supabase/server";
 // gradient runs from near-black through deep green into the brand green,
 // then melts into the page background, so it works in both themes.
 
-const HEADLINE = ["The verse they preach.", "The song they sing.", "On screen the moment", "it's spoken or sung."];
+const HEADLINE = ["Put every verse on screen.", "Display lyrics as you worship.", "Switch translations in seconds."];
 
 // The two halves of a service, side by side under the hero.
 const SIDES = [
@@ -93,9 +93,10 @@ export default async function Home() {
 
           {/* Room for the floating header (24 px + 54 px) above the headline. */}
           <div className="pt-36 pb-[19rem] sm:pt-44 sm:pb-[22rem]">
-            <TypedHeadline lines={HEADLINE} />
-            <p className="mt-6 max-w-xl text-lg leading-snug text-white/75 sm:text-xl">
-              {APP_NAME} listens to your service and puts scripture and song lyrics on the projector and livestream, so your media team never falls behind.
+            {/* 20% smaller than the pricing page's headline. */}
+            <TypedHeadline lines={HEADLINE} size="text-[2.08rem] sm:text-[2.88rem] lg:text-[3.28rem]" />
+            <p className="mt-6 max-w-xl text-[0.9rem] leading-snug text-white/75 sm:text-base">
+              Your church service deserves better than complicated projection software.
             </p>
             <div className="mt-9 flex flex-wrap gap-3">
               <Link
