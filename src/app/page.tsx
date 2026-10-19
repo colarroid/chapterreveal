@@ -15,7 +15,7 @@ const HEADLINE = [
   "Put every verse on screen with AI.",
   "Display lyrics as you worship.",
   "Switch translations in milliseconds.",
-  "You won't need complicated projection software.",
+  "No more complicated projection software.",
 ];
 
 // The two halves of a service, side by side under the hero.
