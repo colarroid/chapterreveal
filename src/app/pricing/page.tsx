@@ -22,7 +22,7 @@ const FAQ: [string, string][] = [
   ],
   [
     "What changes on Paid?",
-    "Video slides, more pictures on one slide, and no limits on your own backgrounds, saved gradients or slides, which are kept until you delete them instead of 7 days.",
+    "You get video slides, and instant access to new features and updates as soon as they're released.",
   ],
   [
     "Can we switch back to Free?",

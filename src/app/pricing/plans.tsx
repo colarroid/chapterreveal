@@ -5,30 +5,19 @@ import Link from "next/link";
 import { useState } from "react";
 import { formatPrice, limitText, PLAN_LIMITS, type Price } from "@/lib/plans";
 
-// Both plans: everything that puts words on screen.
-const EVERYONE = [
-  "Hears the preacher and puts the verse up by itself",
-  "Follows the singing, slide by slide",
+const free = PLAN_LIMITS.free;
+const FREE_FEATURES = [
+  "Projects verses automatically in less than a second",
+  "Detects and projects worship lyrics automatically",
+  `${limitText("image", free.image)} and ${limitText("video", free.video)} as custom backgrounds`,
+  "Picture and text slides for presentations",
+  "Popular translations",
   "Every Bible translation we offer",
   "Shared song library, your own songs and playlists",
-  "Text and picture slides",
   "Projector and green-screen livestream outputs",
   "Service history, and Bibles that work offline",
 ];
-
-const free = PLAN_LIMITS.free;
-const FREE_LIMITS = [
-  `${limitText("image", free.image)} and ${limitText("video", free.video)} as backgrounds`,
-  `${limitText("gradient", free.gradient)} saved`,
-  `${free.slide} picture slides with up to ${free.slideImages} pictures each, kept 7 days`,
-];
-const PAID_EXTRAS = [
-  "Video slides",
-  `Up to ${PLAN_LIMITS.paid.slideImages} pictures on one slide`,
-  "Unlimited background pictures and videos",
-  "Unlimited saved gradients",
-  "Unlimited picture and video slides, kept until you delete them",
-];
+const PAID_EXTRAS = ["Video slides", "Instant access to future releases and updates"];
 
 export function PricingPlans({ price }: { price: Price }) {
   const [yearly, setYearly] = useState(false);
@@ -76,8 +65,7 @@ export function PricingPlans({ price }: { price: Price }) {
             <Link href="/signup" className="mt-6 flex h-12 items-center justify-center rounded-full bg-ink text-sm font-bold text-bg transition hover:opacity-85">
               Start free
             </Link>
-            <Features title="Everything that puts words on screen" items={EVERYONE} />
-            <Features title="With room for" items={FREE_LIMITS} muted />
+            <Features title="Includes" items={FREE_FEATURES} />
           </div>
         </div>
 
