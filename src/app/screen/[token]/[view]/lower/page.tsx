@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { CHROMA_GREEN, OutputScreen } from "../../output";
+import { CHROMA_GREEN } from "@/lib/display/theme";
+import { OutputScreen } from "../../output";
 
 export const metadata: Metadata = { title: "Output", robots: { index: false, follow: false } };
 

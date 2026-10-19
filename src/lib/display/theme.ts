@@ -12,6 +12,23 @@ export type Background =
 
 export type FontKey = "serif" | "sans" | "bold" | "elegant";
 
+/**
+ * The lower third (the livestream outputs), set apart from the projector
+ * look: where the words sit, how big, and whether in capitals.
+ */
+export interface LowerThird {
+  position: "bottom" | "top";
+  align: "left" | "center";
+  /** Text size, as a multiple of the automatic size (0.7 to 1.6). */
+  scale: number;
+  uppercase: boolean;
+}
+
+/** The key colour behind the livestream outputs: pure green (#00FF00), what the church keys on. */
+export const CHROMA_GREEN = "#00ff00";
+
+export const DEFAULT_LOWER: LowerThird = { position: "bottom", align: "left", scale: 1, uppercase: false };
+
 export interface DisplayTheme {
   /** The ready-made theme it started from, for the picker. */
   preset: string;
@@ -29,6 +46,8 @@ export interface DisplayTheme {
   /** A soft shadow under the words, for busy backgrounds. */
   shadow: boolean;
   uppercase: boolean;
+  /** The livestream lower third. */
+  lower: LowerThird;
 }
 
 export interface DisplaySettings {
@@ -53,6 +72,7 @@ const base: Omit<DisplayTheme, "preset" | "background"> = {
   position: "middle",
   shadow: false,
   uppercase: false,
+  lower: DEFAULT_LOWER,
 };
 
 /** Ready-made looks. "classic" is how the projector has always looked. */
@@ -156,6 +176,17 @@ export function cleanTheme(v: unknown, fallback: DisplayTheme): DisplayTheme {
     position: t.position === "top" || t.position === "bottom" ? t.position : "middle",
     shadow: t.shadow === true,
     uppercase: t.uppercase === true,
+    lower: cleanLower(t.lower),
+  };
+}
+
+function cleanLower(v: unknown): LowerThird {
+  const l = (v ?? {}) as Record<string, unknown>;
+  return {
+    position: l.position === "top" ? "top" : "bottom",
+    align: l.align === "center" ? "center" : "left",
+    scale: clamp(l.scale, 0.7, 1.6, 1),
+    uppercase: l.uppercase === true,
   };
 }
 

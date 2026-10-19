@@ -1,5 +1,5 @@
 import { memo, useEffect, useRef, type CSSProperties } from "react";
-import { backgroundCss, DEFAULT_DISPLAY, FONTS, type Background, type DisplayTheme } from "@/lib/display/theme";
+import { backgroundCss, DEFAULT_DISPLAY, DEFAULT_LOWER, FONTS, type Background, type DisplayTheme } from "@/lib/display/theme";
 import type { Slide } from "@/lib/scripture/bible";
 
 export type SlideLayout = "full" | "lower";
@@ -85,6 +85,8 @@ export const SlideView = memo(function SlideView({
   // The lower third keeps its own look: white words on a dark band (or, on
   // green, on nothing).
   const lower = layout === "lower";
+  // Its own position, size and capitals (a look saved before it had them gets the defaults).
+  const lt = t.lower ?? DEFAULT_LOWER;
   // On a key colour (green screen) nothing may be green: the keyer removes
   // green pixels wherever they are, so the reference would vanish. Words and
   // reference are white there, straight on the green (no band), with a hard
@@ -96,10 +98,10 @@ export const SlideView = memo(function SlideView({
   const words: CSSProperties = {
     fontFamily: font.family,
     fontWeight: font.weight,
-    textTransform: t.uppercase ? "uppercase" : undefined,
+    textTransform: (lower ? lt.uppercase : t.uppercase) ? "uppercase" : undefined,
     textShadow: chroma ? chromaEdge : t.shadow && !lower ? "0 0.06em 0.3em rgba(0,0,0,0.7)" : undefined,
   };
-  const scale = lower ? 1 : t.scale;
+  const scale = lower ? lt.scale : t.scale;
   const small = (n: number) => `${(lower ? n * 0.75 : n).toFixed(2)}cqw`;
 
   const body =
@@ -178,12 +180,19 @@ export const SlideView = memo(function SlideView({
   }
 
   if (lower) {
+    const top = lt.position === "top";
+    // On green (livestream output) there's no band at all: the words sit on
+    // the key colour, so only they show over the video once keyed. Off green,
+    // a dark fade from the edge the words sit on.
+    const band = chroma
+      ? top ? "pb-[2.6cqw]" : "pt-[2.6cqw]"
+      : top
+        ? "bg-gradient-to-b from-black/90 via-black/80 to-black/0 pb-[4cqw]"
+        : "bg-gradient-to-t from-black/90 via-black/80 to-black/0 pt-[4cqw]";
     return (
       <div className="relative h-full w-full overflow-hidden [container-type:inline-size]" style={chroma ? { background: chroma } : undefined}>
         <div
-          // On green (livestream output) there's no band at all: the words sit
-          // on the key colour, so only they show over the video once keyed.
-          className={`absolute inset-x-0 bottom-0 ${chroma ? "pt-[2.6cqw]" : "bg-gradient-to-t from-black/90 via-black/80 to-black/0 pt-[4cqw]"} px-[6cqw] pb-[3.2cqw] transition-opacity duration-150 ${on ? "opacity-100" : "opacity-0"}`}
+          className={`absolute inset-x-0 ${top ? "top-0 pt-[3.2cqw]" : "bottom-0 pb-[3.2cqw]"} ${band} ${lt.align === "center" ? "text-center" : ""} px-[6cqw] transition-opacity duration-150 ${on ? "opacity-100" : "opacity-0"}`}
           style={{ color: textColor }}
         >
           {body}

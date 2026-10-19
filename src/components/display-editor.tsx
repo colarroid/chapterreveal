@@ -8,7 +8,7 @@ import { confirmDialog } from "@/components/confirm";
 import { Dropdown } from "@/components/dropdown";
 import { SlideView } from "@/components/slide-view";
 import { Button, IconButton, Notice } from "@/components/ui";
-import { backgroundCss, FONTS, PRESETS, type Background, type DisplaySettings, type DisplayTheme, type FontKey } from "@/lib/display/theme";
+import { backgroundCss, CHROMA_GREEN, DEFAULT_LOWER, FONTS, PRESETS, type Background, type DisplaySettings, type DisplayTheme, type FontKey, type LowerThird } from "@/lib/display/theme";
 import { churchPlan, deleteBackground, deleteGradient, listBackgrounds, listGradients, saveGradient, uploadBackground, VIDEO_MAX, VIDEO_SECONDS, type GradientPreset, type UploadedBackground } from "@/lib/display/backgrounds";
 import { limitText, PLAN_LIMITS, planName, type Plan } from "@/lib/plans";
 import { CONSOLE_CHANNEL, type ConsoleMessage } from "@/lib/live/screen";
@@ -79,6 +79,8 @@ export function DisplayEditor({
     setDraft((d) => ({ ...d, [kind]: { ...d[kind], ...patch, preset: patch.preset ?? "custom" } }));
   };
   const setBackground = (background: Background) => set({ background });
+  const setLower = (patch: Partial<LowerThird>) => set({ lower: { ...(theme.lower ?? DEFAULT_LOWER), ...patch } });
+  const lower = theme.lower ?? DEFAULT_LOWER;
 
   // ---- Uploaded backgrounds ------------------------------------------------
   // Stored in Cloudinary; the list comes from the backgrounds table.
@@ -262,7 +264,7 @@ export function DisplayEditor({
                   <button
                     key={p.id}
                     type="button"
-                    onClick={() => set({ ...p.theme, uppercase: kind === "songs" ? theme.uppercase : false })}
+                    onClick={() => set({ ...p.theme, uppercase: kind === "songs" ? theme.uppercase : false, lower })}
                     title={p.name}
                     className={`overflow-hidden rounded-lg text-left ring-offset-2 ring-offset-surface transition ${active ? "ring-2 ring-accent" : "ring-1 ring-line hover:ring-line-strong"}`}
                   >
@@ -413,6 +415,42 @@ export function DisplayEditor({
               </label>
             </div>
           </Panel>
+
+          {/* The livestream outputs: separate from the projector look above. */}
+          <Panel title="Lower third (livestream)">
+            <div className="flex flex-wrap gap-x-6 gap-y-3">
+              <div>
+                <span className="mb-1.5 block text-sm font-bold">Position</span>
+                <Segmented
+                  value={lower.position}
+                  options={[
+                    ["top", "Top"],
+                    ["bottom", "Bottom"],
+                  ]}
+                  onChange={(v) => setLower({ position: v as LowerThird["position"] })}
+                />
+              </div>
+              <div>
+                <span className="mb-1.5 block text-sm font-bold">Align</span>
+                <Segmented
+                  value={lower.align}
+                  options={[
+                    ["left", "Left"],
+                    ["center", "Centre"],
+                  ]}
+                  onChange={(v) => setLower({ align: v as LowerThird["align"] })}
+                />
+              </div>
+            </div>
+            <Slider label="Size" value={Math.round(lower.scale * 100)} min={70} max={160} step={5} format={(v) => `${v}%`} onChange={(v) => setLower({ scale: v / 100 })} />
+            <label className="flex items-center gap-2 text-sm font-semibold">
+              <input type="checkbox" checked={lower.uppercase} onChange={(e) => setLower({ uppercase: e.target.checked })} className="h-4 w-4 accent-[var(--color-accent-fill)]" />
+              ALL CAPITALS
+            </label>
+            <p className="text-xs text-muted">
+              For the {kind === "scripture" ? "Scripture" : "Lyrics"} Lower Third outputs. The font comes from Words above; the projector isn&apos;t affected.
+            </p>
+          </Panel>
         </div>
 
         {/* Preview */}
@@ -422,8 +460,13 @@ export function DisplayEditor({
               <SlideView slide={SAMPLE[kind]} theme={theme} />
             </div>
           </div>
+          <div className="mt-3 overflow-hidden rounded-lg ring-1 ring-line">
+            <div className="aspect-video">
+              <SlideView slide={SAMPLE[kind]} theme={theme} layout="lower" chroma={CHROMA_GREEN} />
+            </div>
+          </div>
           <p className="mt-2 text-xs text-muted">
-            Exactly as the projector shows it. After saving, open consoles on this computer switch at once; others the next time they&apos;re opened.
+            Top: the projector. Below: the lower third on green, as vMix or OBS receives it. After saving, open consoles on this computer switch at once; others the next time they&apos;re opened.
           </p>
         </div>
       </div>

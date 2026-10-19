@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { SlideView, type SlideLayout } from "@/components/slide-view";
-import { cleanTheme, DEFAULT_DISPLAY, isOwnMedia } from "@/lib/display/theme";
+import { CHROMA_GREEN, cleanTheme, DEFAULT_DISPLAY, isOwnMedia } from "@/lib/display/theme";
 import type { Slide } from "@/lib/scripture/bible";
 import { PRESENT_MESSAGE } from "@/lib/live/present";
 import { localScreenChannel, SCREEN_EVENT, screenTopic, type ScreenPayload } from "@/lib/live/screen";
@@ -13,8 +13,6 @@ import { supabaseBrowser } from "@/lib/supabase/client";
 // church's realtime channel, and re-reads the saved state whenever the
 // socket (re)connects and every 15 s, so it heals after any network blip.
 
-/** The key colour behind the livestream output: standard chroma green. */
-export const CHROMA_GREEN = "#00b140";
 
 export function OutputScreen({
   token,

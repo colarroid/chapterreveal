@@ -45,4 +45,18 @@ describe("display themes", () => {
     expect(t.align).toBe("center");
     expect(t.position).toBe("middle");
   });
+
+  it("gives older saved looks a default lower third, and checks a saved one", () => {
+    const old: Record<string, unknown> = { ...PRESETS[0].theme };
+    delete old.lower;
+    expect(cleanTheme(old, DEFAULT_DISPLAY.scripture).lower).toEqual({ position: "bottom", align: "left", scale: 1, uppercase: false });
+    const t = cleanTheme({ ...PRESETS[0].theme, lower: { position: "top", align: "center", scale: 5, uppercase: true } }, DEFAULT_DISPLAY.scripture);
+    expect(t.lower).toEqual({ position: "top", align: "center", scale: 1.6, uppercase: true });
+    expect(cleanTheme({ ...PRESETS[0].theme, lower: { position: "side", align: "right", scale: "big" } }, DEFAULT_DISPLAY.scripture).lower).toEqual({
+      position: "bottom",
+      align: "left",
+      scale: 1,
+      uppercase: false,
+    });
+  });
 });
