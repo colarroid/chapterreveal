@@ -5,7 +5,7 @@ import { listInputs, startCapture, unlockInputLabels, type AudioInput, type Capt
 import { outbox } from "@/lib/live/outbox";
 import { Transcriber, type SessionRequest, type TranscriberStatus } from "@/lib/live/transcriber";
 import { loadTranslation, shapeOf, type Translation } from "@/lib/scripture/bible";
-import { detectWithCarry, refKey, unfinishedTail, type Detection, type ParseContext, type VerseRef } from "@/lib/scripture/parser";
+import { detectWithCarry, formatRef, refKey, unfinishedTail, type Detection, type Missing, type ParseContext, type VerseRef } from "@/lib/scripture/parser";
 import { VerseTextIndex, type VerseHit } from "@/lib/scripture/verse-text";
 import { BUILT_IN_TRANSLATIONS, findTranslation } from "@/lib/scripture/translations";
 import { supabaseBrowser } from "@/lib/supabase/client";
@@ -30,9 +30,19 @@ export interface Suggestion {
   end?: number;
 }
 
+/** A reference heard that isn't in the Bible: why nothing showed. */
+export interface NotFound {
+  key: string;
+  /** "2 Peter 4:7" */
+  label: string;
+  /** "2 Peter has 3 chapters." */
+  note: string;
+}
+
 export type Phase = "idle" | "starting" | "live" | "ending";
 
 const MAX_SUGGESTIONS = 40;
+const MAX_NOT_FOUND = 3;
 const MAX_SEGMENTS_SHOWN = 60;
 const SILENT_RMS = 0.003;
 const WARN_AFTER_MS = 10_000;
@@ -78,6 +88,7 @@ export function useLiveService({ churchId, userId, bible, silenceEndMinutes, onH
   const [segments, setSegments] = useState<Segment[]>([]);
   const [partial, setPartial] = useState<{ text: string; detections: Detection[] }>({ text: "", detections: [] });
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  const [notFound, setNotFound] = useState<NotFound[]>([]);
   const [silent, setSilent] = useState(false);
   const [clipping, setClipping] = useState(false);
   const [offline, setOffline] = useState(false);
@@ -294,6 +305,22 @@ export function useLiveService({ churchId, userId, bible, silenceEndMinutes, onH
 
   const dismiss = useCallback((key: string) => setSuggestions((p) => p.filter((s) => s.key !== key)), []);
 
+  // Newest first. One per book and chapter, so "2 Peter 4" said at a pause
+  // becomes "2 Peter 4:7" once the verse arrives.
+  const addNotFound = useCallback((list: Missing[]) => {
+    if (list.length === 0) return;
+    setNotFound((prev) => {
+      let next = prev;
+      for (const m of list) {
+        const key = `${m.book}:${m.chapter}`;
+        const label = formatRef({ book: m.book, chapter: m.chapter, verseStart: m.verse });
+        next = [{ key, label, note: m.note }, ...next.filter((x) => x.key !== key)];
+      }
+      return next.slice(0, MAX_NOT_FOUND);
+    });
+  }, []);
+  const dismissNotFound = useCallback((key: string) => setNotFound((p) => p.filter((n) => n.key !== key)), []);
+
   // ---- Saving the record -----------------------------------------------------
   // Transcript lines and the end of the service go through the outbox: stored
   // in this browser first, sent when the connection allows. See outbox.ts.
@@ -336,18 +363,20 @@ export function useLiveService({ churchId, userId, bible, silenceEndMinutes, onH
       onTextRef.current?.(text, true, lagMs);
       // The next stretch of speech starts counting from zero.
       commandsFired.current = 0;
-      const res = b ? detectWithCarry(text, shapeOf(b), ctxRef.current, carryRef.current) : { detections: [], context: ctxRef.current };
+      const res = b ? detectWithCarry(text, shapeOf(b), ctxRef.current, carryRef.current) : { detections: [], context: ctxRef.current, missing: [] };
       // No reference named: maybe scripture read or quoted from memory.
       if (b && !res.detections.length) {
         const quote = quoteDetection(text);
         if (quote) res.detections = [quote];
       }
       ctxRef.current = res.context;
-      carryRef.current = unfinishedTail(text);
+      // Chained, so a reference cut twice ("second" | "Peter chapter four verse" | "seven") keeps its start.
+      carryRef.current = unfinishedTail(carryRef.current ? `${carryRef.current} ${text}` : text);
       lastFinal.current = text;
       if (res.detections.length) onHeardRef.current?.(res.detections, text, true, lagMs);
       setSegments((p) => [...p.slice(-MAX_SEGMENTS_SHOWN + 1), { seq, text, detections: res.detections }]);
       addSuggestions(res.detections, seq);
+      addNotFound(res.missing);
       const begin = segStart.current || now;
       const service = serviceRef.current;
       if (service) {
@@ -362,7 +391,7 @@ export function useLiveService({ churchId, userId, bible, silenceEndMinutes, onH
       }
       segStart.current = 0;
     },
-    [addSuggestions, churchId, quoteDetection],
+    [addSuggestions, addNotFound, churchId, quoteDetection],
   );
 
   // ---- Start and end -------------------------------------------------------
@@ -425,6 +454,7 @@ export function useLiveService({ churchId, userId, bible, silenceEndMinutes, onH
     setStartedAt(startRef.current);
     setSegments([]);
     setSuggestions([]);
+    setNotFound([]);
     setPartial({ text: "", detections: [] });
 
     const t = new Transcriber({ onPartial, onFinal, onStatus: (s) => setStatus(s) }, sessionRef.current?.() ?? {});
@@ -553,6 +583,8 @@ export function useLiveService({ churchId, userId, bible, silenceEndMinutes, onH
     partial,
     suggestions,
     dismiss,
+    notFound,
+    dismissNotFound,
     levelRef,
     warnings: { silent, clipping, offline },
     /** Records stored in this browser, waiting for the connection. */

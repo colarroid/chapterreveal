@@ -204,7 +204,7 @@ describe("references split across two stretches of speech", () => {
     return stretches.map((text) => {
       const res = detectWithCarry(text, bible, ctx, carry);
       ctx = res.context;
-      carry = unfinishedTail(text);
+      carry = unfinishedTail(carry ? `${carry} ${text}` : text);
       return res.detections.map((d) => formatRef(d.ref));
     });
   };
@@ -223,6 +223,10 @@ describe("references split across two stretches of speech", () => {
     expect(stream("Isaiah forty two", "nine.")[1]).toEqual(["Isaiah 42:9"]);
   });
 
+  it("joins a reference cut twice (from a demo)", () => {
+    expect(stream("Turn with me to the book of second", "Peter chapter three verse", "seven.")[2]).toEqual(["2 Peter 3:7"]);
+  });
+
   it("leaves a stretch that ended cleanly alone", () => {
     expect(unfinishedTail("Read Romans eight.")).toBeNull();
     expect(unfinishedTail("God is good all the time")).toBeNull();
@@ -231,5 +235,37 @@ describe("references split across two stretches of speech", () => {
 
   it("doesn't report the same reference again from the carried words", () => {
     expect(stream("open to Genesis one verse one and", "let's pray")[1]).toEqual([]);
+  });
+});
+
+describe("references not in the Bible", () => {
+  const missing = (text: string) => detect(text, bible).missing.map((m) => [formatRef({ book: m.book, chapter: m.chapter, verseStart: m.verse }), m.note]);
+
+  it("says when the chapter doesn't exist", () => {
+    expect(missing("Turn with me to the book of second Peter chapter four verse seven.")).toEqual([["2 Peter 4:7", "2 Peter has 3 chapters."]]);
+    expect(missing("Jude chapter two")).toEqual([["Jude 2", "Jude has 1 chapter."]]);
+    expect(refs("second Peter chapter four verse seven")).toEqual([]);
+  });
+
+  it("says when the verse doesn't exist", () => {
+    expect(missing("John chapter three verse forty")).toEqual([["John 3:40", "John 3 has 36 verses."]]);
+  });
+
+  it("is quiet for real references", () => {
+    expect(missing("second Peter chapter three verse seven")).toEqual([]);
+    expect(missing("John 3:16 and Psalm 119")).toEqual([]);
+  });
+
+  it("follows the reference across pauses, as in the demo", () => {
+    let ctx: ParseContext = {};
+    let carry: string | null = null;
+    const found: string[] = [];
+    for (const text of ["Hello, congregation. Turn with me to the book of second", "Peter chapter four verse", "seven."]) {
+      const res = detectWithCarry(text, bible, ctx, carry);
+      found.push(...res.missing.map((m) => formatRef({ book: m.book, chapter: m.chapter, verseStart: m.verse })));
+      ctx = res.context;
+      carry = unfinishedTail(carry ? `${carry} ${text}` : text);
+    }
+    expect(found.at(-1)).toBe("2 Peter 4:7");
   });
 });

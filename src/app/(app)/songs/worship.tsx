@@ -34,6 +34,7 @@ import { closeProjector, fillProjectorScreen, presentOnProjector, useProjectorOp
 import { CONSOLE_CHANNEL, ScreenSender, type ConsoleMessage } from "@/lib/live/screen";
 import type { Slide } from "@/lib/scripture/bible";
 import { songKeyterms } from "@/lib/songs/keyterms";
+import { outbox } from "@/lib/live/outbox";
 import { SongIndex, type SongMatch } from "@/lib/songs/matcher";
 import { fetchAllSongs, keepSongs, songsAreFresh, songsInMemory, storedSongs, type FullSong } from "@/lib/songs/store";
 import { firstLine, songBody } from "@/lib/songs/songs";
@@ -394,6 +395,27 @@ export function Worship({
       setSuggestion(null);
     }
   }, [live.phase]);
+
+  // Each song that goes up live during a service, once, for the service
+  // history and the weekly summary. Kept offline first, like the verses.
+  const loggedSongs = useRef(new Set<string>());
+  const liveSongId = isLive ? (current?.id ?? null) : null;
+  const liveSongTitle = isLive ? (original?.title ?? "") : "";
+  useEffect(() => {
+    // Saved songs only (an unsaved draft has no id the database knows).
+    if (!liveSongId || !liveSongTitle || !live.serviceId || !/^[0-9a-f-]{36}$/i.test(liveSongId)) return;
+    const key = `${live.serviceId}:${liveSongId}`;
+    if (loggedSongs.current.has(key)) return;
+    loggedSongs.current.add(key);
+    outbox(supabaseBrowser()).add("songs_shown", {
+      client_id: crypto.randomUUID(),
+      service_id: live.serviceId,
+      church_id: churchId,
+      song_id: liveSongId,
+      title: liveSongTitle.slice(0, 200),
+      shown_at: new Date().toISOString(),
+    });
+  }, [liveSongId, liveSongTitle, live.serviceId, churchId]);
 
   // ---- Keyboard ------------------------------------------------------------
   useEffect(() => {

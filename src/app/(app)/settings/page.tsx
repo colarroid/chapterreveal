@@ -38,6 +38,8 @@ export default async function SettingsPage() {
       silenceEndMinutes={m.settings.silence_end_minutes ?? 20}
       settings={m.settings}
       translations={translations}
+      email={m.email}
+      sermonSummaries={!!process.env.ANTHROPIC_API_KEY}
     />
   );
 }

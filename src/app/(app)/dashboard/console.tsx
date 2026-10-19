@@ -21,6 +21,7 @@ import {
   Timer,
   X,
   Zap,
+  CircleOff,
 } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -41,7 +42,7 @@ import { buildSlides, loadTranslation, shapeOf, stepVerse, versesFor, type Slide
 import { formatRef, parseSearch, refKey, type Detection, type VerseRef } from "@/lib/scripture/parser";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { HEADER_ACTIONS_ID } from "../header";
-import { useLiveService, type HeardHandler, type Suggestion, type VoiceCommand } from "./use-live-service";
+import { useLiveService, type HeardHandler, type NotFound, type Suggestion, type VoiceCommand } from "./use-live-service";
 
 const AUTO_KEY = "scripture.autoMode";
 const TRANSLATION_KEY = "scripture.translation";
@@ -616,6 +617,9 @@ export function Console({ churchId, userId, screenToken, translationId, translat
           <section className="flex min-h-0 flex-col rounded-lg bg-surface">
             <PanelTitle title="Heard references" right={<span className="hidden items-center gap-1.5 text-xs text-faint sm:flex"><Kbd>Alt</Kbd> + <Kbd>1</Kbd> to <Kbd>9</Kbd> to show</span>} />
             <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-3 pb-3">
+              {live.notFound.map((n) => (
+                <NotFoundCard key={n.key} n={n} onDismiss={live.dismissNotFound} />
+              ))}
               {liveCards.map((d) => (
                 <SuggestionCard
                   key={`live-${refKey(d.ref)}`}
@@ -636,7 +640,7 @@ export function Console({ churchId, userId, screenToken, translationId, translat
                   onDismiss={live.dismiss}
                 />
               ))}
-              {liveCards.length === 0 && live.suggestions.length === 0 && <EmptyState phase={live.phase} />}
+              {liveCards.length === 0 && live.suggestions.length === 0 && live.notFound.length === 0 && <EmptyState phase={live.phase} />}
             </div>
           </section>
   
@@ -1284,6 +1288,23 @@ const ChapterList = memo(function ChapterList({
     </div>
   );
 });
+
+// Heard, but not in the Bible: says why nothing showed, so the operator
+// knows the preacher misspoke rather than the app missing it.
+function NotFoundCard({ n, onDismiss }: { n: NotFound; onDismiss: (key: string) => void }) {
+  return (
+    <article className="flex items-start gap-3 rounded-lg bg-warning/10 px-4 py-3">
+      <CircleOff size={17} className="mt-0.5 shrink-0 text-warning" />
+      <div className="min-w-0 flex-1">
+        <h3 className="font-bold leading-tight">{n.label}</h3>
+        <p className="mt-0.5 text-sm text-muted">Not in the Bible. {n.note}</p>
+      </div>
+      <IconButton label="Dismiss" onClick={() => onDismiss(n.key)} className="-mt-1 -mr-1 h-8 w-8">
+        <X size={16} />
+      </IconButton>
+    </article>
+  );
+}
 
 function EmptyState({ phase }: { phase: string }) {
   return (

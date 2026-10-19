@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, ChevronRight, Copy, Link2, LoaderCircle, MonitorPlay, Palette, RefreshCw, ShieldCheck, Trash2, UserPlus, UserRound, Users } from "lucide-react";
+import { Check, ChevronRight, Copy, Link2, LoaderCircle, Mail, MonitorPlay, Palette, RefreshCw, ShieldCheck, Trash2, UserPlus, UserRound, Users } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -37,6 +37,10 @@ interface Props {
   silenceEndMinutes: number;
   settings: Record<string, unknown>;
   translations: TranslationInfo[];
+  /** The signed-in user's address, where a sample summary goes. */
+  email: string;
+  /** Whether the email includes AI sermon summaries (ANTHROPIC_API_KEY set). */
+  sermonSummaries: boolean;
 }
 
 function Section({ icon: Icon, title, description, children }: { icon: typeof Users; title: string; description?: string; children: React.ReactNode }) {
@@ -108,6 +112,7 @@ export function Settings(p: Props) {
   const [translation, setTranslation] = useState(String(p.settings.translation ?? DEFAULT_TRANSLATION));
   const [address, setAddress] = useState<ChurchAddress>(p.address.country ? p.address : { ...p.address, country: DEFAULT_COUNTRY });
   const [me, setMe] = useState(p.profile);
+  const [weekly, setWeekly] = useState(p.settings.weekly_summary === true);
   const [msg, setMsg] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
   // Which action is running, so only its button shows a spinner.
   const [busy, setBusy] = useState<string | null>(null);
@@ -324,6 +329,67 @@ export function Settings(p: Props) {
                 Save changes
               </Button>
             </form>
+          </Section>
+        )}
+
+        {p.isAdmin && (
+          <Section
+            icon={Mail}
+            title="Weekly summary"
+            description={`Every Monday morning, church admins get an email of the past week's services: ${p.sermonSummaries ? "a short summary of each sermon, " : ""}the scriptures shown and the songs sung.`}
+          >
+            <button
+              type="button"
+              role="switch"
+              aria-checked={weekly}
+              disabled={busy !== null}
+              onClick={() => {
+                const on = !weekly;
+                setWeekly(on);
+                void run(
+                  () => supabase.from("churches").update({ settings: { ...p.settings, weekly_summary: on } }).eq("id", p.churchId),
+                  on ? "The weekly summary is on. The first one arrives next Monday." : "The weekly summary is off.",
+                  "weekly",
+                );
+              }}
+              className="flex w-full items-center gap-3 rounded-lg bg-surface-2 px-4 py-3 text-left transition hover:bg-surface-3 disabled:opacity-60"
+            >
+              <span className="min-w-0 flex-1">
+                <span className="block font-bold">Email the weekly summary</span>
+                <span className="block text-sm text-muted">To every admin of {p.churchName}. Off by default.</span>
+              </span>
+              <span className={`relative h-5 w-9 shrink-0 rounded-full transition ${weekly ? "bg-accent-fill" : "bg-surface-3 ring-1 ring-line-strong"}`}>
+                <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all ${weekly ? "left-[18px]" : "left-0.5"}`} />
+              </span>
+            </button>
+            <div className="flex flex-wrap items-center gap-3">
+              <Button
+                variant="outline"
+                disabled={busy !== null}
+                loading={busy === "sample"}
+                onClick={async () => {
+                  setBusy("sample");
+                  setMsg(null);
+                  try {
+                    const res = await fetch("/api/summary/sample", { method: "POST" });
+                    const body = await res.json().catch(() => ({}));
+                    setMsg(res.ok ? { tone: "ok", text: `Sample sent to ${body.sentTo}. It can take a minute to arrive.` } : { tone: "error", text: body.error ?? "The sample couldn't be sent." });
+                  } catch {
+                    setMsg({ tone: "error", text: "The sample couldn't be sent. Check your connection." });
+                  } finally {
+                    setBusy(null);
+                  }
+                }}
+              >
+                Send me a sample
+              </Button>
+              <span className="text-sm text-muted">Last week&apos;s summary, to {p.email}.</span>
+            </div>
+            {p.sermonSummaries && (
+              <p className="text-xs text-faint">
+                Sermon summaries are written by AI from the live transcript and leave out personal details like prayer requests and names. The full transcript stays in History.
+              </p>
+            )}
           </Section>
         )}
 

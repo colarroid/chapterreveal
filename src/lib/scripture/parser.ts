@@ -28,6 +28,20 @@ export interface Detection {
   kind: "explicit" | "followup" | "quote";
 }
 
+/**
+ * A reference that was said but isn't in the Bible ("2 Peter 4:7": 2 Peter
+ * has three chapters). Nothing can show; the operator is told why.
+ */
+export interface Missing {
+  book: number;
+  chapter: number;
+  verse?: number;
+  start: number;
+  end: number;
+  /** "2 Peter has 3 chapters." */
+  note: string;
+}
+
 export interface ParseContext {
   /** Book and chapter of the last reference, for follow-ups like "verse 17". */
   book?: number;
@@ -126,6 +140,8 @@ interface NumberParse {
   chapterKw: boolean;
   adjacent: boolean; // "John 3 16" with nothing between
   clamped: boolean;
+  /** A verse said that the chapter doesn't have. */
+  pastEnd?: number;
 }
 
 const num = (t: Token | undefined) => t?.num;
@@ -266,6 +282,7 @@ function validate(res: NumberParse, book: number, bible: BibleShape): NumberPars
   for (const [s, e] of res.verses) {
     if (s < 1 || s > max) {
       res.clamped = true;
+      if (s > max) res.pastEnd ??= s;
       continue;
     }
     if (e > max) res.clamped = true;
@@ -320,6 +337,20 @@ function toDetections(
   }));
 }
 
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+// The chapter (and verse) said after a book name, read without checking
+// them against the Bible: "chapter four verse seven" -> 4, 7.
+function saidNumbers(tokens: Token[], k: number): { chapter: number; verse?: number; end: number } | null {
+  if (CHAPTER_KW.has(tokens[k]?.text ?? "")) k += 1;
+  const chapter = num(tokens[k]);
+  if (chapter === undefined) return null;
+  let j = k + 1;
+  while (j < k + 4 && tokens[j] && num(tokens[j]) === undefined && (tokens[j].text === ":" || VERSE_KW.has(tokens[j].text) || BRIDGE.has(tokens[j].text))) j += 1;
+  const verse = j > k + 1 ? num(tokens[j]) : undefined;
+  return { chapter, verse, end: verse === undefined ? k + 1 : j + 1 };
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 
@@ -333,9 +364,10 @@ export function detect(
   bible: BibleShape,
   ctx: ParseContext = {},
   mode: Mode = "speech",
-): { detections: Detection[]; context: ParseContext } {
+): { detections: Detection[]; context: ParseContext; missing: Missing[] } {
   const tokens = tokenize(text);
   const out: Detection[] = [];
+  const missing: Missing[] = [];
   let book = ctx.book;
   let chapter = ctx.chapter;
   let bare: { book: number; end: number } | null = null;
@@ -347,6 +379,14 @@ export function detect(
       const p = parseNumbers(tokens, m.end, m.book, mode, bible);
       if (p) {
         out.push(...toDetections(p, m.book, tokens, i, score(p, m.book, mode, false), "explicit"));
+        // "John 3:40": the chapter is there, the verse isn't.
+        if (p.verses.length === 0 && p.pastEnd !== undefined) {
+          missing.push({
+            book: m.book, chapter: p.chapter, verse: p.pastEnd,
+            start: tokens[i].start, end: tokens[p.end - 1].end,
+            note: `${BOOKS[m.book].name} ${p.chapter} has ${plural(bible.verses(m.book, p.chapter), "verse")}.`,
+          });
+        }
         book = m.book;
         chapter = p.chapter;
         bare = null;
@@ -355,7 +395,7 @@ export function detect(
       }
       if (mode === "search") {
         out.push({ ref: { book: m.book, chapter: 1 }, start: tokens[i].start, end: tokens[m.end - 1].end, confidence: 1, kind: "explicit" });
-        return { detections: out, context: { book: m.book, chapter: 1 } };
+        return { detections: out, context: { book: m.book, chapter: 1 }, missing };
       }
       // Named with numbers that don't exist in it ("2 Peter chapter 4": it has
       // three). Those numbers are this book's, so they must not fall through
@@ -364,6 +404,14 @@ export function detect(
       if (next !== undefined && (CHAPTER_KW.has(next) || num(tokens[m.end]) !== undefined)) {
         book = m.book;
         chapter = undefined;
+        const said = saidNumbers(tokens, m.end);
+        if (said && said.chapter > bible.chapters(m.book)) {
+          missing.push({
+            book: m.book, chapter: said.chapter, verse: said.verse,
+            start: tokens[i].start, end: tokens[said.end - 1].end,
+            note: `${BOOKS[m.book].name} has ${plural(bible.chapters(m.book), "chapter")}.`,
+          });
+        }
       }
       bare = { book: m.book, end: m.end };
       i = m.end;
@@ -416,7 +464,7 @@ export function detect(
   // A book named in the last couple of tokens is probably waiting for its
   // chapter, which will arrive in the next piece of transcript.
   const pendingBook = bare && bare.end >= tokens.length - 1 ? bare.book : undefined;
-  return { detections: out, context: { book, chapter, pendingBook } };
+  return { detections: out, context: { book, chapter, pendingBook }, missing };
 }
 
 /** Parses what the operator types in the search box: "Jn 3 16", "1 cor 13:4-7", "ps 23". */
@@ -447,7 +495,7 @@ export function formatRef(r: VerseRef): string {
 // Words a reference can continue after: a number (the verse may follow the
 // chapter: "Isaiah forty two" | "nine"), "chapter", "verse", "and", "to"...
 const OPEN_ENDING =
-  /^(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fourty|fifty|sixty|seventy|eighty|ninety|hundred|chapter|chapters|verse|verses|and|to|through|colon|\d+)$/;
+  /^(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fourty|fifty|sixty|seventy|eighty|ninety|hundred|chapter|chapters|verse|verses|and|to|through|colon|first|second|third|\d+)$/;
 
 /**
  * The transcriber cuts a stretch of speech at a pause, sometimes mid-number:
@@ -469,14 +517,11 @@ export function unfinishedTail(text: string): string | null {
  * tail). Offsets are moved back into `text`; references wholly inside the
  * carried words were already reported with the previous stretch.
  */
-export function detectWithCarry(text: string, shape: BibleShape, ctx: ParseContext, carry: string | null): { detections: Detection[]; context: ParseContext } {
+export function detectWithCarry(text: string, shape: BibleShape, ctx: ParseContext, carry: string | null): { detections: Detection[]; context: ParseContext; missing: Missing[] } {
   if (!carry) return detect(text, shape, ctx);
   const shift = carry.length + 1;
   const res = detect(`${carry} ${text}`, shape, ctx);
-  return {
-    context: res.context,
-    detections: res.detections
-      .filter((d) => d.end > shift)
-      .map((d) => ({ ...d, start: Math.max(0, d.start - shift), end: d.end - shift })),
-  };
+  const move = <T extends { start: number; end: number }>(list: T[]) =>
+    list.filter((d) => d.end > shift).map((d) => ({ ...d, start: Math.max(0, d.start - shift), end: d.end - shift }));
+  return { context: res.context, detections: move(res.detections), missing: move(res.missing) };
 }
