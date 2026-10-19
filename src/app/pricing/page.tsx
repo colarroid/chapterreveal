@@ -3,7 +3,8 @@ import { SiteFooter, SiteHeader } from "@/components/landing/site-chrome";
 import { APP_NAME } from "@/lib/brand";
 import { DEFAULT_PRICE, formatPrice, priceFor } from "@/lib/plans";
 import { getSessionUser } from "@/lib/supabase/server";
-import { HERO_GRADIENT, TypedHeadline } from "@/components/landing/hero";
+import { heroBackground } from "@/components/landing/gradient";
+import { TypedHeadline } from "@/components/landing/hero";
 import { PricingPlans } from "./plans";
 
 export const metadata = {
@@ -38,12 +39,13 @@ export default async function PricingPage({ searchParams }: { searchParams: Prom
   const price = priceFor(country ?? (await headers()).get("x-vercel-ip-country"));
   const signedIn = !!(await getSessionUser());
   return (
-    <div className="min-h-dvh">
+    // Green peak behind the top of the plan cards.
+    <div className="min-h-dvh [--hero-h:700px] sm:[--hero-h:760px]" style={heroBackground}>
       <SiteHeader signedIn={signedIn} />
       {/* After terms.so's pricing page: a tall gradient with the headline and
           a short intro on the left, and the plans sitting where it fades into
           the page. ReedArk's own gradient, type and words. */}
-      <section style={{ background: HERO_GRADIENT }}>
+      <section>
         {/* Room for the floating header (24 px + 54 px) above the headline. */}
         <div className="mx-auto max-w-[60rem] px-5 pt-36 pb-10 sm:px-8 sm:pt-44">
           {/* White on the dark top of the gradient; the plans below keep the page's colours. */}

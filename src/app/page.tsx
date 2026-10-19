@@ -1,7 +1,8 @@
 import { BookOpen, Cast, Check, ClipboardPaste, Globe, Languages, ListMusic, Music, PencilLine, Play, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { Features } from "@/components/landing/features";
-import { AmbientFragments, HERO_GRADIENT, TypedHeadline } from "@/components/landing/hero";
+import { heroBackground } from "@/components/landing/gradient";
+import { AmbientFragments, TypedHeadline } from "@/components/landing/hero";
 import { SiteFooter, SiteHeader } from "@/components/landing/site-chrome";
 import { APP_NAME, SITE_DESCRIPTION, SITE_URL } from "@/lib/brand";
 import { getSessionUser } from "@/lib/supabase/server";
@@ -88,10 +89,12 @@ export default async function Home() {
   const signedIn = !!(await getSessionUser());
 
   return (
-    <div className="min-h-dvh">
+    // The gradient sits behind the top of the page at a fixed height; its green
+    // peak falls behind the step cards rising out of the hero.
+    <div className="min-h-dvh [--hero-h:860px] sm:[--hero-h:880px]" style={heroBackground}>
       {/* Fixed text from this file only (no user input), so it can go in as is. */}
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(STRUCTURED_DATA) }} />
-      <section className="relative" style={{ background: HERO_GRADIENT }}>
+      <section className="relative">
         <AmbientFragments />
         <div className="relative mx-auto max-w-[60rem] px-5 sm:px-8">
           <SiteHeader home signedIn={signedIn} />

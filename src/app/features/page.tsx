@@ -35,6 +35,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
+import { heroBackground } from "@/components/landing/gradient";
 import { TypedHeadline } from "@/components/landing/hero";
 import { SiteFooter, SiteHeader } from "@/components/landing/site-chrome";
 import { APP_NAME } from "@/lib/brand";
@@ -64,12 +65,6 @@ interface Group {
   lead: string;
   features: Feature[];
 }
-
-// The site's hero gradient with its bright band pinned to the last 9rem,
-// just under the jump links: the words stay on the dark top however tall the
-// text wraps, with no long empty glow before the first group.
-const GRADIENT =
-  "linear-gradient(180deg, #050505 0%, #06110a 20%, #072014 40%, #0a3a1e calc(100% - 9rem), #0f6330 calc(100% - 7rem), #17a64c calc(100% - 5.5rem), #1ed760 calc(100% - 4.25rem), color-mix(in srgb, #1ed760 45%, var(--bg)) calc(100% - 2.25rem), var(--bg) 100%)";
 
 const free = PLAN_LIMITS.free;
 const paid = PLAN_LIMITS.paid;
@@ -172,11 +167,12 @@ const GROUPS: Group[] = [
 export default async function FeaturesPage() {
   const signedIn = !!(await getSessionUser());
   return (
-    <div className="min-h-dvh">
+    // Green peak just under the jump links.
+    <div className="min-h-dvh [--hero-h:850px] sm:[--hero-h:820px]" style={heroBackground}>
       <SiteHeader signedIn={signedIn} />
-      <section style={{ background: GRADIENT }}>
+      <section>
         {/* Room for the floating header (24 px + 54 px) above the headline,
-            and for the bright band (GRADIENT) below the jump links. */}
+            and for the green peak below the jump links. */}
         <div className="mx-auto max-w-[60rem] px-5 pt-36 pb-[10rem] sm:px-8 sm:pt-44">
           <div className="text-white">
             <TypedHeadline lines={["Everything it does,", "for every service."]} />
