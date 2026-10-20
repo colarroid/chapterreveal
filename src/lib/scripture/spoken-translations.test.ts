@@ -101,6 +101,15 @@ describe("matching what was heard to the church's list", () => {
   it("falls back to another edition of the same translation", () => {
     expect(matchSpokenTranslation(list, "AMP")?.id).toBe("ampc");
   });
+  it("treats the Good News Translation (GNT) and Good News Bible (GNB) as one", () => {
+    const gnb = [{ id: "gnb", short: "GNB" }];
+    for (const said of ["GNT", "GNB"]) expect(matchSpokenTranslation(gnb, said)?.id).toBe("gnb");
+    expect(matchSpokenTranslation([{ id: "gnt", short: "GNT" }], "GNB")?.id).toBe("gnt");
+    for (const text of ["give me the GNT", "G N B please", "the Good News Bible", "read it in the Good News Translation", "Good News Version"]) expect(last(text)).toBe("GNT");
+    // Good news in a sermon isn't a request for a translation.
+    expect(last("I have good news for you today")).toBeNull();
+    expect(last("we rejoice in the good news of Jesus")).toBeNull();
+  });
   it("finds nothing when the church doesn't have it", () => {
     expect(matchSpokenTranslation(list, "ESV")).toBeUndefined();
   });

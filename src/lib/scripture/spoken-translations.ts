@@ -42,7 +42,10 @@ const PATTERNS: Pattern[] = [
   { short: "AMPC", plain: [abbr("ampc"), /\bamplified classic(?: edition| version| bible)?\b/gi, /\bclassic amplified(?: version| bible)?\b/gi] },
   { short: "AMP", plain: [/\bamplified (?:version|bible|translation)\b/gi], marked: ["amplified", "amp"].map(marked) },
   { short: "MSG", plain: [], marked: ["the message", "message"].map(marked) },
-  { short: "GNT", plain: [/\bgood news (?:translation|bible)\b/gi] },
+  // The Good News Translation is also published as the Good News Bible (GNB):
+  // one translation, either name (FAMILY links the two short names). Never
+  // "in the good news" alone: sermons say that all the time.
+  { short: "GNT", plain: [abbr("gnt"), abbr("gnb"), /\bgood news (?:translation|bible|version)\b/gi] },
   { short: "CSB", plain: [abbr("csb"), /\bchristian standard bible\b/gi] },
   { short: "NRSV", plain: [abbr("nrsv"), /\bnew revised standard version\b/gi] },
   { short: "RSV", plain: [/\b(?<!n)r[\s.]?s[\s.]?v\b/gi, /\b(?<!new )revised standard version\b/gi] },
@@ -90,6 +93,8 @@ export function lastSpokenTranslation(text: string): SpokenTranslation | null {
 const FAMILY: Record<string, string[]> = {
   AMP: ["AMPC"],
   AMPC: ["AMP"],
+  GNT: ["GNB"],
+  GNB: ["GNT"],
   NASB: ["NASB20", "NASB2020", "NASB95", "NASB1995"],
   NIV: ["NIV2011", "NIVUK"],
   NLT: ["NLTCE"],

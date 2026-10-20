@@ -120,7 +120,7 @@ export function transcriptionKeyterms(): string[] {
     "KJV", "NKJV", "NIV", "NLT", "ESV", "NASB", "NHEB", "BSB", "ASV", "BBE", "AMPC", "TPT",
     "King James", "New King James", "American King James", "Updated King James",
     "New Living Translation", "Amplified", "Amplified Classic", "The Message", "Passion Translation",
-    "Berean", "Young's Literal", "Darby", "Webster's Bible", "Good News Translation",
+    "Berean", "Young's Literal", "Darby", "Webster's Bible", "Good News Translation", "Good News Bible", "GNT", "GNB",
   ]) terms.add(t);
   return [...terms];
 }
