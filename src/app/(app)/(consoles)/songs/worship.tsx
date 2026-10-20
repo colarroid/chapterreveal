@@ -597,6 +597,8 @@ export function Worship({
               ))}
             {(live.phase === "idle" || live.phase === "starting") && (
               <Button
+                // The same height as the Follow switch beside it.
+                className="h-9! px-5!"
                 onClick={live.start}
                 loading={live.phase === "starting"}
                 disabled={!songs}
