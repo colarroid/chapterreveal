@@ -37,8 +37,6 @@ interface Props {
   silenceEndMinutes: number;
   settings: Record<string, unknown>;
   translations: TranslationInfo[];
-  /** The signed-in user's address, where a sample summary goes. */
-  email: string;
   /** Whether the email includes AI sermon summaries (ANTHROPIC_API_KEY set). */
   sermonSummaries: boolean;
 }
@@ -366,29 +364,6 @@ export function Settings(p: Props) {
                 <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all ${weekly ? "left-[18px]" : "left-0.5"}`} />
               </span>
             </button>
-            <div className="flex flex-wrap items-center gap-3">
-              <Button
-                variant="outline"
-                disabled={busy !== null}
-                loading={busy === "sample"}
-                onClick={async () => {
-                  setBusy("sample");
-                  setMsg(null);
-                  try {
-                    const res = await fetch("/api/summary/sample", { method: "POST" });
-                    const body = await res.json().catch(() => ({}));
-                    setMsg(res.ok ? { tone: "ok", text: `Sample sent to ${body.sentTo}. It can take a minute to arrive.` } : { tone: "error", text: body.error ?? "The sample couldn't be sent." });
-                  } catch {
-                    setMsg({ tone: "error", text: "The sample couldn't be sent. Check your connection." });
-                  } finally {
-                    setBusy(null);
-                  }
-                }}
-              >
-                Send me a sample
-              </Button>
-              <span className="text-sm text-muted">Last week&apos;s summary, to {p.email}.</span>
-            </div>
             {p.sermonSummaries && (
               <p className="text-xs text-faint">
                 Sermon summaries are written by AI from the live transcript and leave out personal details like prayer requests and names. The full transcript stays in History.
