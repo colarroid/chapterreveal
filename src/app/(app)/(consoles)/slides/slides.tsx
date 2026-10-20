@@ -386,18 +386,19 @@ export function Slides({
               <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all ${isLive ? "left-[18px]" : "left-0.5"}`} />
             </span>
           </button>
+          {/* The same height as the Live switch beside them. */}
           <div className="ml-auto flex flex-wrap items-center gap-1">
             {projectorOpen && !projectorFull && (
-              <Button size="sm" variant="outline" className="h-10" onClick={fillProjectorScreen} title="The projector window isn't full screen yet. Click to fill it.">
+              <Button size="sm" variant="outline" className="h-9!" onClick={fillProjectorScreen} title="The projector window isn't full screen yet. Click to fill it.">
                 <Maximize size={14} /> Fill projector screen
               </Button>
             )}
             {projectorOpen ? (
-              <Button size="sm" variant="secondary" className="h-10" onClick={() => (closeProjector(), syncProjector())}>
+              <Button size="sm" variant="secondary" className="h-9!" onClick={() => (closeProjector(), syncProjector())}>
                 <MonitorOff size={14} /> Stop presenting
               </Button>
             ) : (
-              <Button size="sm" className="h-10" loading={presenting} disabled={!outputUrl} onClick={() => void present()}>
+              <Button size="sm" className="h-9!" loading={presenting} disabled={!outputUrl} onClick={() => void present()}>
                 <MonitorUp size={14} /> Present
               </Button>
             )}
