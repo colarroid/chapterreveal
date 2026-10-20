@@ -67,6 +67,9 @@ let handoff: Handoff | null = null;
 /** The console listening now, so Start elsewhere can take over from it. */
 let listening: { suspend: () => void } | null = null;
 
+/** Whether a console in this tab is listening to a service now (the update notice waits for it to end). */
+export const isListening = () => listening !== null;
+
 function closeHandoff(reason: "silence" | "abandoned") {
   if (!handoff) return;
   clearTimeout(handoff.timer);

@@ -3,6 +3,9 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   // The dev badge would show up on the projector and in vMix.
   devIndicators: false,
+  // Which build this browser is running, for the update notice (it compares
+  // with /api/version). Vercel sets the commit; locally it's "dev".
+  env: { NEXT_PUBLIC_BUILD_ID: process.env.VERCEL_GIT_COMMIT_SHA ?? "dev" },
   experimental: {
     // Pages visited in the last 30 s reopen instantly from memory (tab
     // switching, the back button) instead of waiting on the server again.
