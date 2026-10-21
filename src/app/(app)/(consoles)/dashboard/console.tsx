@@ -43,6 +43,7 @@ import { formatRef, parseSearch, refKey, type Detection, type VerseRef } from "@
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { HEADER_ACTIONS_ID } from "../../header";
 import { useConsoleActive } from "../active";
+import { SwitchTrack, Tooltip } from "@/components/motion";
 import { useLiveService, type HeardHandler, type NotFound, type Suggestion, type VoiceCommand } from "./use-live-service";
 
 const AUTO_KEY = "scripture.autoMode";
@@ -694,9 +695,7 @@ export function Console({ churchId, userId, screenToken, translationId, translat
                 >
                   Live
                   <Kbd>L</Kbd>
-                  <span className={`relative h-5 w-9 rounded-full transition ${isLive ? "bg-negative" : "bg-surface-3 ring-1 ring-line-strong"}`}>
-                    <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all ${isLive ? "left-[18px]" : "left-0.5"}`} />
-                  </span>
+                  <SwitchTrack on={isLive} tone="live" />
                 </button>
               </div>
             </div>
@@ -770,26 +769,31 @@ export function Console({ churchId, userId, screenToken, translationId, translat
               </div>
               {outputUrl && (
                 <div className="ml-auto flex items-center gap-1">
-                    <a
-                      href={outputUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      aria-label="Open the output page in a new tab"
-                      title="Open the output page in a new tab"
-                      className="grid h-10 w-10 place-items-center rounded-full text-muted transition hover:bg-surface-2 hover:text-ink"
-                    >
-                      <ExternalLink size={16} />
-                    </a>
+                    <Tooltip label="Open the output page in a new tab">
+                      <a
+                        href={outputUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        aria-label="Open the output page in a new tab"
+                        className="grid h-10 w-10 place-items-center rounded-full text-muted transition hover:bg-surface-2 hover:text-ink"
+                      >
+                        <ExternalLink size={16} />
+                      </a>
+                    </Tooltip>
                     {/* The projector window isn't filling its screen (the address bar shows): one click here fixes it. */}
                     {projectorOpen && !projectorFull && (
-                      <Button size="sm" variant="outline" className="h-10" onClick={fillProjectorScreen} title="The projector window isn't full screen yet. Click to fill it.">
-                        <Maximize size={14} /> <span className={BUTTON_LABEL}>Fill projector screen</span>
-                      </Button>
+                      <Tooltip label="Fill projector screen: the projector window isn't full screen yet">
+                        <Button size="sm" variant="outline" className="h-10" onClick={fillProjectorScreen} aria-label="Fill projector screen">
+                          <Maximize size={14} /> <span className={BUTTON_LABEL}>Fill projector screen</span>
+                        </Button>
+                      </Tooltip>
                     )}
                     {projectorOpen ? (
-                      <Button size="sm" variant="secondary" className="h-10" onClick={stopPresenting} title="Close the projector window">
-                        <MonitorOff size={14} /> <span className={BUTTON_LABEL}>Stop presenting</span>
-                      </Button>
+                      <Tooltip label="Stop presenting: close the projector window">
+                        <Button size="sm" variant="secondary" className="h-10" onClick={stopPresenting} aria-label="Stop presenting">
+                          <MonitorOff size={14} /> <span className={BUTTON_LABEL}>Stop presenting</span>
+                        </Button>
+                      </Tooltip>
                     ) : (
                       <Button size="sm" className="h-10" loading={presenting} onClick={present} title="Open the output full screen on the projector (second monitor)">
                         <MonitorUp size={14} /> Present
@@ -1001,9 +1005,7 @@ function ControlBar({
         >
           <Zap size={15} className={auto ? "fill-current" : ""} />
           Auto
-          <span className={`relative h-5 w-9 rounded-full transition ${auto ? "bg-accent-fill" : "bg-surface-3"}`}>
-            <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all ${auto ? "left-[18px]" : "left-0.5"}`} />
-          </span>
+          <SwitchTrack on={auto} tone="accent" />
         </button>
         {live.phase === "live" &&
           (live.status === "live" ? (

@@ -1,4 +1,5 @@
 import { CircleAlert, CircleCheck, Info, LoaderCircle } from "lucide-react";
+import { Tooltip } from "./motion";
 import Link from "next/link";
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from "react";
 import { APP_NAME } from "@/lib/brand";
@@ -88,14 +89,16 @@ export function Button({
 /** Circular icon button, Spotify's play-control shape. */
 export function IconButton({ label, className = "", children, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { label: string }) {
   return (
-    <button
-      {...props}
-      aria-label={label}
-      title={label}
-      className={`grid h-9 w-9 shrink-0 place-items-center rounded-full text-muted transition hover:bg-surface-2 hover:text-ink disabled:pointer-events-none disabled:opacity-40 ${className}`}
-    >
-      {children}
-    </button>
+    // Its label on hover and keyboard focus (components/motion.tsx).
+    <Tooltip label={label}>
+      <button
+        {...props}
+        aria-label={label}
+        className={`grid h-9 w-9 shrink-0 place-items-center rounded-full text-muted transition hover:bg-surface-2 hover:text-ink disabled:pointer-events-none disabled:opacity-40 ${className}`}
+      >
+        {children}
+      </button>
+    </Tooltip>
   );
 }
 

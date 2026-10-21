@@ -14,6 +14,7 @@ import type { Slide } from "@/lib/scripture/bible";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { useLeaveWarning } from "@/lib/use-leave-warning";
 import { useConsoleActive } from "../active";
+import { SwitchTrack } from "@/components/motion";
 
 export interface SavedSlide {
   id: string;
@@ -382,9 +383,7 @@ export function Slides({
           >
             Live
             <Kbd>L</Kbd>
-            <span className={`relative h-5 w-9 rounded-full transition ${isLive ? "bg-negative" : "bg-surface-3 ring-1 ring-line-strong"}`}>
-              <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all ${isLive ? "left-[18px]" : "left-0.5"}`} />
-            </span>
+            <SwitchTrack on={isLive} tone="live" />
           </button>
           {/* The same height as the Live switch beside them. */}
           <div className="ml-auto flex flex-wrap items-center gap-1">

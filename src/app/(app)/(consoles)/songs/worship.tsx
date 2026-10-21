@@ -42,6 +42,7 @@ import { supabaseBrowser } from "@/lib/supabase/client";
 import { EndServiceButton, LevelMeter } from "../dashboard/console";
 import { useLiveService } from "../dashboard/use-live-service";
 import { useConsoleActive } from "../active";
+import { SwitchTrack } from "@/components/motion";
 import { SetlistPanel, type Setlist } from "./setlist";
 import { SongEditor, type SongFields } from "./song-editor";
 
@@ -581,9 +582,7 @@ export function Worship({
             >
               <Zap size={15} className={auto ? "fill-current" : ""} />
               Follow
-              <span className={`relative h-5 w-9 rounded-full transition ${auto ? "bg-accent-fill" : "bg-surface-3"}`}>
-                <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all ${auto ? "left-[18px]" : "left-0.5"}`} />
-              </span>
+              <SwitchTrack on={auto} tone="accent" />
             </button>
             {live.phase === "live" &&
               (live.status === "live" ? (
@@ -712,9 +711,7 @@ export function Worship({
               >
                 Live
                 <Kbd>L</Kbd>
-                <span className={`relative h-5 w-9 rounded-full transition ${isLive ? "bg-negative" : "bg-surface-3 ring-1 ring-line-strong"}`}>
-                  <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all ${isLive ? "left-[18px]" : "left-0.5"}`} />
-                </span>
+                <SwitchTrack on={isLive} tone="live" />
               </button>
             </div>
             <div className="flex min-h-0 flex-1 flex-col px-4 pb-4">

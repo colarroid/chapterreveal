@@ -10,6 +10,7 @@ import { Logo } from "@/components/ui";
 import { forgetBibleKey } from "@/lib/scripture/bible-crypto";
 import { forgetSongs } from "@/lib/songs/store";
 import { isConsolePath } from "./(consoles)/active";
+import { GlidingPill } from "@/components/motion";
 import { supabaseBrowser } from "@/lib/supabase/client";
 
 export const HEADER_ACTIONS_ID = "header-actions";
@@ -144,6 +145,7 @@ function AccountMenu({ person, churchName }: { person: Person; churchName: strin
 
 export function AppHeader({ churchName, email, firstName, lastName }: { churchName: string } & Person) {
   const path = usePathname();
+  const tabs = useRef<HTMLElement>(null);
 
   return (
     <header className="flex h-16 shrink-0 items-center gap-4 bg-bg px-4">
@@ -155,13 +157,16 @@ export function AppHeader({ churchName, email, firstName, lastName }: { churchNa
         <Logo href="/dashboard" variant="header" className="h-[31px]" />
       </span>
 
-      <nav className="flex items-center gap-1 rounded-full bg-surface p-1">
+      {/* One highlight glides to the open tab (after beUI's tabs). */}
+      <nav ref={tabs} className="relative flex items-center gap-1 rounded-full bg-surface p-1">
+        <GlidingPill row={tabs} activeKey={NAV.find(({ href }) => path === href || path.startsWith(`${href}/`))?.href ?? null} />
         {NAV.map(({ href, label, icon }) => {
           const active = path === href || path.startsWith(`${href}/`);
           return (
             <Link
               key={href}
               href={href}
+              data-pill-key={href}
               onClick={(e) => {
                 // Between consoles: they're all mounted already (workspace.tsx),
                 // so just change the address; no page load, nothing lost.
@@ -170,12 +175,14 @@ export function AppHeader({ churchName, email, firstName, lastName }: { churchNa
                   if (path !== href) window.history.pushState(null, "", href);
                 }
               }}
-              className={`inline-flex h-8 items-center gap-2 rounded-full px-3.5 text-sm transition active:scale-95 ${
-                active ? "bg-surface-3 font-bold text-ink" : "text-muted hover:bg-surface-2 hover:text-ink"
+              className={`relative inline-flex h-8 items-center gap-2 rounded-full px-3.5 text-sm transition-colors active:scale-95 ${
+                active ? "font-bold text-ink" : "text-muted hover:bg-surface-2 hover:text-ink"
               }`}
             >
-              <NavIcon icon={icon} />
-              <span className="hidden sm:inline">{label}</span>
+              <span className="relative inline-flex items-center gap-2">
+                <NavIcon icon={icon} />
+                <span className="hidden sm:inline">{label}</span>
+              </span>
             </Link>
           );
         })}
