@@ -7,7 +7,7 @@
 // they add next to nothing to what the console downloads. Reduced motion is
 // honoured by globals.css.
 
-import { cloneElement, useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type ReactElement, type RefObject } from "react";
+import { cloneElement, useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type ReactElement } from "react";
 import { createPortal } from "react-dom";
 
 /** A spring-like ease that overshoots a touch, then settles. */
@@ -33,28 +33,43 @@ export function SwitchTrack({ on, tone = "accent" }: { on: boolean; tone?: "live
 }
 
 /**
- * One highlight that glides to the active item of a row (the console tabs).
- * Measures the active element inside `row`; until measured it isn't drawn.
+ * One highlight that glides to the active item of the row it sits in (the
+ * console tabs): the element with data-pill-key equal to activeKey. It finds
+ * the row through itself, since its own effects run before the row's ref is
+ * attached, and measures again when the row changes size (the font loading
+ * in, a narrower window).
  */
-export function GlidingPill({ row, activeKey }: { row: RefObject<HTMLElement | null>; activeKey: string | null }) {
+export function GlidingPill({ activeKey, onShown }: { activeKey: string | null; onShown?: (shown: boolean) => void }) {
+  const self = useRef<HTMLSpanElement>(null);
   const [box, setBox] = useState<{ x: number; w: number } | null>(null);
   const [moved, setMoved] = useState(false);
+  const lastKey = useRef(activeKey);
   useLayoutEffect(() => {
-    const el = row.current?.querySelector<HTMLElement>(`[data-pill-key="${activeKey}"]`);
-    if (!el) return setBox(null);
-    setBox((prev) => {
-      if (prev) setMoved(true);
-      return { x: el.offsetLeft, w: el.offsetWidth };
-    });
-  }, [row, activeKey]);
-  if (!box) return null;
+    const row = self.current?.parentElement;
+    if (!row) return;
+    const measure = () => {
+      const el = row.querySelector<HTMLElement>(`[data-pill-key="${activeKey}"]`);
+      const next = el && el.offsetWidth > 0 ? { x: el.offsetLeft, w: el.offsetWidth } : null;
+      setBox((prev) => (prev && next && prev.x === next.x && prev.w === next.w ? prev : next));
+    };
+    // Glide only when the tab changes, not when the row re-measures.
+    setMoved(lastKey.current !== activeKey);
+    lastKey.current = activeKey;
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(row);
+    return () => ro.disconnect();
+  }, [activeKey]);
+  useEffect(() => onShown?.(!!box), [box, onShown]);
   return (
     <span
+      ref={self}
       aria-hidden
       className="absolute top-1 bottom-1 left-0 rounded-full bg-surface-3 motion-reduce:transition-none"
       style={{
-        width: box.w,
-        transform: `translateX(${box.x}px)`,
+        display: box ? undefined : "none",
+        width: box?.w,
+        transform: `translateX(${box?.x ?? 0}px)`,
         // No glide on the first draw, only between tabs.
         transition: moved ? `transform 320ms ${EASE_OUT}, width 320ms ${EASE_OUT}` : "none",
       }}

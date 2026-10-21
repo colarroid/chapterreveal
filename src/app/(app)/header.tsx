@@ -146,6 +146,8 @@ function AccountMenu({ person, churchName }: { person: Person; churchName: strin
 export function AppHeader({ churchName, email, firstName, lastName }: { churchName: string } & Person) {
   const path = usePathname();
   const tabs = useRef<HTMLElement>(null);
+  // Until the gliding highlight has measured, the open tab has its own.
+  const [pill, setPill] = useState(false);
 
   return (
     <header className="flex h-16 shrink-0 items-center gap-4 bg-bg px-4">
@@ -159,7 +161,7 @@ export function AppHeader({ churchName, email, firstName, lastName }: { churchNa
 
       {/* One highlight glides to the open tab (after beUI's tabs). */}
       <nav ref={tabs} className="relative flex items-center gap-1 rounded-full bg-surface p-1">
-        <GlidingPill row={tabs} activeKey={NAV.find(({ href }) => path === href || path.startsWith(`${href}/`))?.href ?? null} />
+        <GlidingPill onShown={setPill} activeKey={NAV.find(({ href }) => path === href || path.startsWith(`${href}/`))?.href ?? null} />
         {NAV.map(({ href, label, icon }) => {
           const active = path === href || path.startsWith(`${href}/`);
           return (
@@ -176,7 +178,7 @@ export function AppHeader({ churchName, email, firstName, lastName }: { churchNa
                 }
               }}
               className={`relative inline-flex h-8 items-center gap-2 rounded-full px-3.5 text-sm transition-colors active:scale-95 ${
-                active ? "font-bold text-ink" : "text-muted hover:bg-surface-2 hover:text-ink"
+                active ? `font-bold text-ink ${pill ? "" : "bg-surface-3"}` : "text-muted hover:bg-surface-2 hover:text-ink"
               }`}
             >
               <span className="relative inline-flex items-center gap-2">
