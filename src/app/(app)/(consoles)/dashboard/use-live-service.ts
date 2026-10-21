@@ -50,6 +50,28 @@ const WARN_AFTER_MS = 10_000;
 const RESUME_WITHIN_MS = 60 * 60_000;
 const DEVICE_KEY = "scripture.inputDevice";
 
+// The service this browser is running, so Start after a refresh or a crash
+// (which never ends the service: no code runs) carries the same one on
+// instead of opening another and leaving the first "live" for ever. A
+// second computer at the church has its own, so it still gets its own.
+const RUNNING_KEY = "reedark.runningService";
+/** A service left running longer ago than this is never picked back up. */
+const RUNNING_FOR_MS = 12 * 60 * 60_000;
+const runningKey = (churchId: string) => `${RUNNING_KEY}:${churchId}`;
+function rememberRunning(churchId: string, id: string | null) {
+  try {
+    if (id) localStorage.setItem(runningKey(churchId), id);
+    else localStorage.removeItem(runningKey(churchId));
+  } catch {}
+}
+function runningHere(churchId: string): string | null {
+  try {
+    return localStorage.getItem(runningKey(churchId));
+  } catch {
+    return null;
+  }
+}
+
 // One console listens at a time. Scriptures and Song Lyrics stay mounted side
 // by side (../workspace.tsx), and listening stays with the one that started
 // it while you move between tabs (detection carries on while lyrics are
@@ -456,15 +478,16 @@ export function useLiveService({ churchId, userId, bible, silenceEndMinutes, onH
       resumedSeq = taken.seq;
       resumedAudio = taken.audioSeconds;
     }
-    const { data: last } = svc ? { data: null } : await supabase
-      .from("services")
-      .select("id, started_at, ended_at, audio_seconds")
-      .eq("church_id", churchId)
-      .order("started_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    // The one this browser was running (a refresh or crash cut it off), else
+    // the church's latest.
+    const mine = svc ? null : runningHere(churchId);
+    const services = () => supabase.from("services").select("id, started_at, ended_at, audio_seconds").eq("church_id", churchId);
+    const { data: own } = mine ? await services().eq("id", mine).maybeSingle() : { data: null };
+    const { data: last } = svc ? { data: null } : own ? { data: own } : await services().order("started_at", { ascending: false }).limit(1).maybeSingle();
     const endedAt = last?.ended_at ? new Date(last.ended_at) : null;
-    if (last && endedAt && Date.now() - endedAt.getTime() < RESUME_WITHIN_MS && endedAt.toDateString() === new Date().toDateString()) {
+    const cutOff = !!own && !own.ended_at && Date.now() - new Date(own.started_at).getTime() < RUNNING_FOR_MS;
+    const endedJustNow = !!endedAt && Date.now() - endedAt.getTime() < RESUME_WITHIN_MS && endedAt.toDateString() === new Date().toDateString();
+    if (last && (cutOff || endedJustNow)) {
       const [{ error: reopenErr }, { data: lastSeg }] = await Promise.all([
         supabase.from("services").update({ ended_at: null, end_reason: null }).eq("id", last.id),
         supabase.from("transcript_segments").select("seq").eq("service_id", last.id).order("seq", { ascending: false }).limit(1).maybeSingle(),
@@ -487,6 +510,7 @@ export function useLiveService({ churchId, userId, bible, silenceEndMinutes, onH
     }
 
     serviceRef.current = svc.id;
+    rememberRunning(churchId, svc.id);
     // Times in the transcript count from the service's first start.
     startRef.current = resumed ? new Date(svc.started_at).getTime() : Date.now();
     seqRef.current = resumedSeq;
@@ -529,6 +553,7 @@ export function useLiveService({ churchId, userId, bible, silenceEndMinutes, onH
       capture.current?.stop();
       capture.current = null;
       await supabase.from("services").update({ ended_at: new Date().toISOString(), end_reason: "abandoned" }).eq("id", svc.id);
+      rememberRunning(churchId, null);
       serviceRef.current = null;
       setServiceId(null);
       setStartedAt(null);
@@ -553,6 +578,7 @@ export function useLiveService({ churchId, userId, bible, silenceEndMinutes, onH
         end_reason: reason,
         audio_seconds: Math.round(audioBaseRef.current + (transcriber.current?.audioSeconds ?? 0)),
       });
+      rememberRunning(churchId, null);
       transcriber.current = null;
       serviceRef.current = null;
       setServiceId(null);
@@ -563,7 +589,7 @@ export function useLiveService({ churchId, userId, bible, silenceEndMinutes, onH
       setPartial({ text: "", detections: [] });
       setPhase("idle");
     },
-    [],
+    [churchId],
   );
 
   useEffect(() => {
@@ -653,9 +679,11 @@ export function useLiveService({ churchId, userId, bible, silenceEndMinutes, onH
           end_reason: "abandoned",
           audio_seconds: Math.round(audioBaseRef.current + (transcriber.current?.audioSeconds ?? 0)),
         });
+        rememberRunning(churchId, null);
         serviceRef.current = null;
       }
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on leaving: the church never changes here
     [],
   );
 

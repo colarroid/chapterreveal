@@ -63,7 +63,9 @@ const PATTERNS: Pattern[] = [
   // "Webster" alone is also a dictionary: only with "bible" or a reading cue.
   { short: "WBT", plain: [/\bwebster'?s? bible\b/gi], marked: ["webster"].map(marked) },
   { short: "ACV", plain: [abbr("acv"), /\ba conservative version\b/gi] },
-  { short: "DBY", plain: [/\bdarby(?: bible| translation)?\b/gi] },
+  // "Darby" alone is how the transcriber often writes "Daddy" ("Darby said,
+  // okay"): only with "Bible"/"translation"/"version" or a reading cue.
+  { short: "DBY", plain: [/\bdarby (?:bible|translation|version)\b/gi], marked: ["darby(?![’']s)"].map(marked) },
 ];
 
 /**

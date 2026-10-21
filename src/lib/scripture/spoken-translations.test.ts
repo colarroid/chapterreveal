@@ -122,6 +122,12 @@ describe("matching what was heard to the church's list", () => {
     expect(matchSpokenTranslation(both, "RSV")?.id).toBe("rsv");
     expect(matchSpokenTranslation(both, "NRSV")?.id).toBe("nrsvue");
   });
+  it("doesn't take \"Daddy\", transcribed as \"Darby\", for the Darby translation (from a real service)", () => {
+    expect(last("Darby I just received emergency meeting")).toBeNull();
+    expect(last("Darby said, Okay, no problem. But within yourself")).toBeNull();
+    expect(last("Daddy no excuse can be given and I thank God for the grace of God in Darby's life")).toBeNull();
+    for (const text of ["read it in Darby", "the Darby Bible", "Darby translation", "from the Darby"]) expect(last(text)).toBe("DBY");
+  });
   it("finds nothing when the church doesn't have it", () => {
     expect(matchSpokenTranslation(list, "ESV")).toBeUndefined();
   });

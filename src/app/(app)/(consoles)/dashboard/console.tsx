@@ -32,7 +32,7 @@ import { Dropdown } from "@/components/dropdown";
 import { SlideView } from "@/components/slide-view";
 import { cleanDisplay, type DisplaySettings } from "@/lib/display/theme";
 import { Button, Chip, IconButton, Kbd, PixelLoader, SignalBars } from "@/components/ui";
-import { AUTO_REPEAT_MS, eligible, HOLD_MS, readiness } from "@/lib/live/auto-show";
+import { AUTO_REPEAT_MS, eligible, holdMs, readiness } from "@/lib/live/auto-show";
 import { outbox } from "@/lib/live/outbox";
 import { lastSpokenTranslation, matchSpokenTranslation } from "@/lib/scripture/spoken-translations";
 import { findTranslation, starredFirst, type TranslationInfo } from "@/lib/scripture/translations";
@@ -239,9 +239,15 @@ export function Console({ churchId, userId, screenToken, translationId, translat
 
   // ---- Putting verses on screen -------------------------------------------
 
+  // The same verse put up again within seconds (a second click, Auto and a
+  // click together) is one showing, not three lines in History.
+  const lastLogged = useRef({ key: "", at: 0 });
   const logShown = useCallback(
     (slide: Slide, ref: VerseRef, source: ShowSource, s?: Suggestion) => {
       if (!live.serviceId || !bible) return;
+      const key = `${slide.label}|${bible.id}`;
+      if (lastLogged.current.key === key && Date.now() - lastLogged.current.at < 15_000) return;
+      lastLogged.current = { key, at: Date.now() };
       // Stored in this browser first and sent when the connection allows, so
       // verses shown during an outage still reach the service history.
       outbox(supabaseBrowser()).add("verses_shown", {
@@ -496,7 +502,7 @@ export function Console({ churchId, userId, screenToken, translationId, translat
       if (!d) return;
       const r = readiness(text, d, shapeOf(bible), final);
       if (r === "now") fireAuto(d, lagMs, heardAt);
-      else if (r === "hold") holdTimer.current = setTimeout(() => fireAuto(d, lagMs, heardAt), HOLD_MS);
+      else if (r === "hold") holdTimer.current = setTimeout(() => fireAuto(d, lagMs, heardAt), holdMs(text, d));
     };
     return () => {
       if (holdTimer.current) clearTimeout(holdTimer.current);
