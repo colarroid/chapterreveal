@@ -154,6 +154,7 @@ export function transcriptionKeyterms(): string[] {
     "King James", "New King James", "American King James", "Updated King James",
     "New Living Translation", "Amplified", "Amplified Classic", "The Message", "Passion Translation",
     "Berean", "Young's Literal", "Darby", "Webster's Bible", "Good News Translation", "Good News Bible", "GNT", "GNB",
+    "NRSV", "NRSVUE", "RSV", "New Revised Standard", "Revised Standard Version",
   ]) terms.add(t);
   return [...terms];
 }

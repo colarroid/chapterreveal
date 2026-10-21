@@ -47,6 +47,11 @@ const PATTERNS: Pattern[] = [
   // "in the good news" alone: sermons say that all the time.
   { short: "GNT", plain: [abbr("gnt"), abbr("gnb"), /\bgood news (?:translation|bible|version)\b/gi] },
   { short: "CSB", plain: [abbr("csb"), /\bchristian standard bible\b/gi] },
+  // The Updated Edition before plain NRSV, which its name contains.
+  {
+    short: "NRSVUE",
+    plain: [abbr("nrsvue"), /\bn[\s.]?r[\s.]?s[\s.]?v,?\s+updated(?: edition)?\b/gi, /\bnew revised standard version,?\s+updated(?: edition)?\b/gi],
+  },
   { short: "NRSV", plain: [abbr("nrsv"), /\bnew revised standard version\b/gi] },
   { short: "RSV", plain: [/\b(?<!n)r[\s.]?s[\s.]?v\b/gi, /\b(?<!new )revised standard version\b/gi] },
   { short: "TPT", plain: [abbr("tpt"), /\bpassion translation\b/gi] },
@@ -93,6 +98,10 @@ export function lastSpokenTranslation(text: string): SpokenTranslation | null {
 const FAMILY: Record<string, string[]> = {
   AMP: ["AMPC"],
   AMPC: ["AMP"],
+  // The NRSV and its Updated Edition: either asked for, whichever the church has.
+  // (The older RSV is a different translation and stays apart.)
+  NRSV: ["NRSVUE"],
+  NRSVUE: ["NRSV"],
   GNT: ["GNB"],
   GNB: ["GNT"],
   NASB: ["NASB20", "NASB2020", "NASB95", "NASB1995"],

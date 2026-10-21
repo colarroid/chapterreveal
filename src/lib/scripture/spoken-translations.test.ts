@@ -110,6 +110,18 @@ describe("matching what was heard to the church's list", () => {
     expect(last("I have good news for you today")).toBeNull();
     expect(last("we rejoice in the good news of Jesus")).toBeNull();
   });
+  it("treats the NRSV and NRSVUE as one, and keeps the RSV apart", () => {
+    for (const text of ["NRSVUE", "N R S V U E", "the NRSV updated edition", "New Revised Standard Version Updated Edition"]) expect(last(text)).toBe("NRSVUE");
+    for (const text of ["give me the NRSV", "the N R S V", "New Revised Standard Version"]) expect(last(text)).toBe("NRSV");
+    for (const text of ["the RSV", "Revised Standard Version"]) expect(last(text)).toBe("RSV");
+    const ue = [{ id: "nrsvue", short: "NRSVUE" }];
+    for (const said of ["NRSV", "NRSVUE"]) expect(matchSpokenTranslation(ue, said)?.id).toBe("nrsvue");
+    expect(matchSpokenTranslation(ue, "RSV")).toBeUndefined();
+    // With the RSV uploaded too, each goes to its own.
+    const both = [...ue, { id: "rsv", short: "RSV" }];
+    expect(matchSpokenTranslation(both, "RSV")?.id).toBe("rsv");
+    expect(matchSpokenTranslation(both, "NRSV")?.id).toBe("nrsvue");
+  });
   it("finds nothing when the church doesn't have it", () => {
     expect(matchSpokenTranslation(list, "ESV")).toBeUndefined();
   });
