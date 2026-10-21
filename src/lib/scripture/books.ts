@@ -1,4 +1,5 @@
-// The 66 books in canonical order. Index = position in the Bible data files.
+// The 66 books in canonical order, then the Deuterocanonical books (see
+// CANON). Index = position in the Bible data files.
 //
 // `spoken` are forms a preacher says (and the transcriber writes), matched in
 // live transcripts. `abbr` are typed short forms, only matched in the manual
@@ -16,6 +17,8 @@ export interface BookDef {
   // Common English words that are also book names. Without a clear chapter
   // and verse they get a lower confidence.
   commonWord?: boolean;
+  /** One of the Deuterocanonical books (the Apocrypha): not in every Bible. */
+  deutero?: boolean;
 }
 
 export const BOOKS: BookDef[] = [
@@ -90,7 +93,35 @@ export const BOOKS: BookDef[] = [
   { name: "3 John", short: "3 John", spoken: ["john"], abbr: ["jn", "jhn", "joh"], ordinal: 3 },
   { name: "Jude", short: "Jude", spoken: ["jude"], abbr: ["jud", "jd"] },
   { name: "Revelation", short: "Rev", spoken: ["revelation", "revelations", "the revelation"], abbr: ["rev", "re", "rv"] },
+
+  // The Deuterocanonical books (the Apocrypha), read by Catholic, Orthodox and
+  // Anglican churches and printed in Bibles like the NRSVUE. After Revelation,
+  // so every 66-book file and saved reference keeps its numbers. Names that
+  // are also everyday words or people's names are marked commonWord.
+  { name: "Tobit", short: "Tob", spoken: ["tobit", "tobias"], abbr: ["tob", "tb"], deutero: true },
+  { name: "Judith", short: "Jdt", spoken: ["judith"], abbr: ["jdt", "jdth"], deutero: true, commonWord: true },
+  { name: "Esther (Greek)", short: "Esth Gk", spoken: ["greek esther", "esther greek", "additions to esther", "rest of esther"], abbr: ["esg", "gkesth", "addesth"], deutero: true },
+  { name: "Wisdom of Solomon", short: "Wis", spoken: ["wisdom of solomon", "book of wisdom", "wisdom"], abbr: ["wis", "ws", "wisd"], deutero: true, commonWord: true },
+  { name: "Sirach", short: "Sir", spoken: ["sirach", "ecclesiasticus", "ben sira", "wisdom of ben sira", "wisdom of sirach"], abbr: ["sir", "ecclus"], deutero: true },
+  { name: "Baruch", short: "Bar", spoken: ["baruch"], abbr: ["bar", "ba"], deutero: true },
+  { name: "Letter of Jeremiah", short: "Ep Jer", spoken: ["letter of jeremiah", "epistle of jeremiah", "epistle of jeremy"], abbr: ["epjer", "lje", "letjer"], deutero: true },
+  {
+    name: "Prayer of Azariah",
+    short: "Pr Azar",
+    spoken: ["prayer of azariah", "song of the three", "song of the three young men", "song of the three jews", "song of the three holy children"],
+    abbr: ["prazar", "azar", "s3y"],
+    deutero: true,
+  },
+  { name: "Susanna", short: "Sus", spoken: ["susanna", "susannah"], abbr: ["sus"], deutero: true, commonWord: true },
+  { name: "Bel and the Dragon", short: "Bel", spoken: ["bel and the dragon"], abbr: ["bel"], deutero: true },
+  { name: "1 Maccabees", short: "1 Macc", spoken: ["maccabees", "macabees", "maccabee"], abbr: ["macc", "mac", "ma", "mc"], ordinal: 1, deutero: true },
+  { name: "2 Maccabees", short: "2 Macc", spoken: ["maccabees", "macabees", "maccabee"], abbr: ["macc", "mac", "ma", "mc"], ordinal: 2, deutero: true },
+  { name: "1 Esdras", short: "1 Esd", spoken: ["esdras"], abbr: ["esd", "es"], ordinal: 1, deutero: true },
+  { name: "Prayer of Manasseh", short: "Pr Man", spoken: ["prayer of manasseh", "prayer of manasses"], abbr: ["prman", "man", "pma"], deutero: true },
 ];
+
+/** The 66 books of the Protestant Bible: indexes 0-65. The rest are Deuterocanonical. */
+export const CANON = 66;
 
 // Words that put a number in front of a numbered book: "first Corinthians",
 // "1st John", "two Timothy", "II Kings".
@@ -104,7 +135,9 @@ export const ORDINAL_WORDS: Record<string, 1 | 2 | 3> = {
 // spelled the way the parser expects.
 export function transcriptionKeyterms(): string[] {
   const terms = new Set<string>();
-  for (const b of BOOKS) {
+  // The 66 only: most churches never read the Deuterocanonical books, and
+  // every extra prompt is one more word the transcriber might hear wrongly.
+  for (const b of BOOKS.slice(0, CANON)) {
     if (b.ordinal) {
       const word = ["First", "Second", "Third"][b.ordinal - 1];
       terms.add(`${word} ${b.name.replace(/^\d /, "")}`);

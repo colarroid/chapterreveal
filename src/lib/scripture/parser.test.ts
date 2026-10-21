@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { buildSlides, shapeOf, stepVerse, type Translation } from "./bible";
-import { detect, detectWithCarry, formatRef, parseSearch, unfinishedTail, type ParseContext } from "./parser";
+import { detect, detectWithCarry, formatRef, parseSearch, unfinishedTail, type BibleShape, type ParseContext } from "./parser";
 import { tokenize } from "./tokenize";
 
 const kjv: Translation = JSON.parse(fs.readFileSync(path.join(__dirname, "../../../public/bibles/kjv.json"), "utf8"));
@@ -267,5 +267,36 @@ describe("references not in the Bible", () => {
       carry = unfinishedTail(carry ? `${carry} ${text}` : text);
     }
     expect(found.at(-1)).toBe("2 Peter 4:7");
+  });
+});
+
+describe("Deuterocanonical books", () => {
+  // The KJV's 66 books, then 14 Deuterocanonical ones of 60 verses a chapter (Sirach has 51 chapters).
+  const withDeutero: BibleShape = {
+    chapters: (b) => (b < 66 ? bible.chapters(b) : b === 70 ? 51 : b < 80 ? 16 : 0),
+    verses: (b, c) => (b < 66 ? bible.verses(b, c) : 60),
+  };
+  const found = (text: string, shape: BibleShape) => detect(text, shape).detections.map((d) => formatRef(d.ref));
+
+  it("are heard with a Bible that has them", () => {
+    expect(found("turn to Sirach chapter three verse four", withDeutero)).toEqual(["Sirach 3:4"]);
+    expect(found("Ecclesiasticus 2:1", withDeutero)).toEqual(["Sirach 2:1"]);
+    expect(found("first Maccabees chapter two verse one", withDeutero)).toEqual(["1 Maccabees 2:1"]);
+    expect(found("the book of Tobit chapter four verse fifteen", withDeutero)).toEqual(["Tobit 4:15"]);
+    expect(found("Wisdom of Solomon chapter three verse one", withDeutero)).toEqual(["Wisdom of Solomon 3:1"]);
+  });
+
+  it("are just words with a 66-book Bible: nothing heard, no note", () => {
+    for (const text of ["turn to Sirach chapter three verse four", "Judith chapter 3 verse 2", "wisdom chapter one verse five"]) {
+      const res = detect(text, bible);
+      expect(res.detections).toEqual([]);
+      expect(res.missing).toEqual([]);
+    }
+  });
+
+  it("leave the 66 books as they were", () => {
+    expect(found("Esther 4:14", withDeutero)).toEqual(["Esther 4:14"]);
+    expect(found("first Kings 3:5", withDeutero)).toEqual(["1 Kings 3:5"]);
+    expect(found("Song of Songs 2:4", withDeutero)).toEqual(["Song of Solomon 2:4"]);
   });
 });

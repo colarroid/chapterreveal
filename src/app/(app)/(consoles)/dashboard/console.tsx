@@ -348,6 +348,8 @@ export function Console({ churchId, userId, screenToken, translationId, translat
   useEffect(() => {
     const sel = selectionRef.current;
     if (!bible || !sel || sel.slides[0]?.translation === (bible.short ?? bible.id.toUpperCase())) return;
+    // A Deuterocanonical book the new Bible doesn't have: what's showing stays.
+    if (!bible.books[sel.ref.book]?.length) return;
     const slides = buildSlides(bible, sel.ref);
     if (slides.length) putUp({ ref: sel.ref, slides, index: Math.min(sel.index, slides.length - 1) }, "step");
   }, [bible, putUp]);
@@ -368,8 +370,8 @@ export function Console({ churchId, userId, screenToken, translationId, translat
       if (chapter < 1) {
         if (book === 0) return;
         book -= 1;
-        chapter = bible.books[book].length;
-      } else if (chapter > bible.books[book].length) {
+        chapter = bible.books[book]?.length ?? 1;
+      } else if (chapter > (bible.books[book]?.length ?? 0)) {
         if (book === bible.books.length - 1) return;
         book += 1;
         chapter = 1;
@@ -395,7 +397,8 @@ export function Console({ churchId, userId, screenToken, translationId, translat
   const typeDigit = useCallback(
     (digit: string) => {
       if (!bible || !browse) return;
-      const max = bible.books[browse.book][browse.chapter - 1].length;
+      const max = bible.books[browse.book]?.[browse.chapter - 1]?.length ?? 0;
+      if (!max) return;
       const next = (typedRef.current + digit).replace(/^0+/, "");
       if (!next) return;
       if (typedTimer.current) clearTimeout(typedTimer.current);

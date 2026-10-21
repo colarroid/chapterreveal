@@ -99,11 +99,14 @@ const ALIASES: Record<Mode, Map<string, Alias[]>> = {
   search: buildAliases("search"),
 };
 
-function aliasAt(tokens: Token[], i: number, mode: Mode, ordinal?: 1 | 2 | 3) {
+function aliasAt(tokens: Token[], i: number, mode: Mode, bible: BibleShape, ordinal?: 1 | 2 | 3) {
   const list = ALIASES[mode].get(tokens[i]?.text ?? "");
   if (!list) return null;
   for (const a of list) {
     if ((a.ordinal ?? undefined) !== ordinal) continue;
+    // The Deuterocanonical books count only with a Bible that has them: on a
+    // 66-book Bible "Judith" or "Wisdom" is just a word.
+    if (BOOKS[a.book].deutero && bible.chapters(a.book) === 0) continue;
     if (a.words.every((w, k) => tokens[i + k]?.text === w)) {
       return { book: a.book, end: i + a.words.length };
     }
@@ -112,20 +115,20 @@ function aliasAt(tokens: Token[], i: number, mode: Mode, ordinal?: 1 | 2 | 3) {
 }
 
 /** A book name starting at token i. `end` is the index after its last token. */
-function matchBook(tokens: Token[], i: number, mode: Mode): { book: number; end: number } | null {
+function matchBook(tokens: Token[], i: number, mode: Mode, bible: BibleShape): { book: number; end: number } | null {
   const t = tokens[i];
   if (!t) return null;
   // Skip a leading "the book of".
   if (t.text === "book" && tokens[i + 1]?.text === "of") {
-    return matchBook(tokens, i + 2, mode);
+    return matchBook(tokens, i + 2, mode, bible);
   }
   const isRoman = t.text === "i" || t.text === "ii" || t.text === "iii";
   const ordinal = (!isRoman || mode === "search") ? ORDINAL_WORDS[t.text] : undefined;
   if (ordinal) {
-    const m = aliasAt(tokens, i + 1, mode, ordinal);
+    const m = aliasAt(tokens, i + 1, mode, bible, ordinal);
     if (m) return m;
   }
-  return aliasAt(tokens, i, mode);
+  return aliasAt(tokens, i, mode, bible);
 }
 
 // ---------------------------------------------------------------------------
@@ -147,8 +150,8 @@ interface NumberParse {
 const num = (t: Token | undefined) => t?.num;
 
 /** True when a full reference (book plus chapter) starts at token i. */
-function refStartsAt(tokens: Token[], i: number, mode: Mode): boolean {
-  const m = matchBook(tokens, i, mode);
+function refStartsAt(tokens: Token[], i: number, mode: Mode, bible: BibleShape): boolean {
+  const m = matchBook(tokens, i, mode, bible);
   if (!m) return false;
   return num(tokens[m.end]) !== undefined || CHAPTER_KW.has(tokens[m.end]?.text ?? "");
 }
@@ -203,7 +206,7 @@ function parseNumbers(
     res.colon || res.verseKw ||
     // "Proverbs 3, 5 and 6": a bare comma means chapter then verse.
     (sawBridge && j === k + 1 && (tokens[k].text === "," || tokens[k].text === "."));
-  if (v !== undefined && !refStartsAt(tokens, j, mode)) {
+  if (v !== undefined && !refStartsAt(tokens, j, mode, bible)) {
     if (j === k) {
       res.adjacent = true;
       res.verses.push([v, v]);
@@ -231,7 +234,7 @@ function finishVerses(tokens: Token[], res: NumberParse, mode: Mode, bible: Bibl
     let j = k + 1;
     if (VERSE_KW.has(tokens[j]?.text ?? "")) j += 1;
     const n = num(tokens[j]);
-    if (n === undefined || refStartsAt(tokens, j, mode)) break;
+    if (n === undefined || refStartsAt(tokens, j, mode, bible)) break;
     // "John 3:16, 4:2" is a new chapter, not a verse list. Stop here.
     if (tokens[j + 1]?.text === ":") break;
     const last = res.verses[res.verses.length - 1];
@@ -374,7 +377,7 @@ export function detect(
 
   for (let i = 0; i < tokens.length; ) {
     // 1. Book name followed by numbers.
-    const m = matchBook(tokens, i, mode);
+    const m = matchBook(tokens, i, mode, bible);
     if (m) {
       const p = parseNumbers(tokens, m.end, m.book, mode, bible);
       if (p) {

@@ -49,6 +49,8 @@ export function versesFor(t: Translation, r: VerseRef): Verse[] {
 
 /** The verse after (step 1) or before (step -1) a verse, across chapter and book ends. */
 export function stepVerse(t: Translation, book: number, chapter: number, verse: number, step: 1 | -1): VerseRef | null {
+  // Not in this Bible (a Deuterocanonical book in a 66-book one).
+  if (!t.books[book]?.[chapter - 1]) return null;
   let b = book, c = chapter, v = verse + step;
   if (v < 1) {
     c -= 1;

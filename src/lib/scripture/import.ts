@@ -10,15 +10,20 @@
 //   JSON          { books: string[][][] }, scrollmapper's { books: [{ chapters: [{ verses }] }] },
 //                 or a list of { book, chapter, verse, text }
 //   CSV / TSV     book, chapter, verse, text (book as a name, code or 1–66)
+//
+// The Deuterocanonical books (Tobit, Sirach, 1 Maccabees…) are kept when a
+// file has them (the NRSVUE does), after the 66 (see CANON in books.ts).
 //   Plain text    one verse per line: "Genesis 1:1 In the beginning…"
 
-import { BOOKS } from "./books";
+import { BOOKS, CANON } from "./books";
 
 export const USFM_CODES = [
   "GEN", "EXO", "LEV", "NUM", "DEU", "JOS", "JDG", "RUT", "1SA", "2SA", "1KI", "2KI", "1CH", "2CH", "EZR", "NEH", "EST",
   "JOB", "PSA", "PRO", "ECC", "SNG", "ISA", "JER", "LAM", "EZK", "DAN", "HOS", "JOL", "AMO", "OBA", "JON", "MIC", "NAM",
   "HAB", "ZEP", "HAG", "ZEC", "MAL", "MAT", "MRK", "LUK", "JHN", "ACT", "ROM", "1CO", "2CO", "GAL", "EPH", "PHP", "COL",
   "1TH", "2TH", "1TI", "2TI", "TIT", "PHM", "HEB", "JAS", "1PE", "2PE", "1JN", "2JN", "3JN", "JUD", "REV",
+  // Deuterocanonical, in BOOKS order.
+  "TOB", "JDT", "ESG", "WIS", "SIR", "BAR", "LJE", "S3Y", "SUS", "BEL", "1MA", "2MA", "1ES", "MAN",
 ];
 
 const OSIS_CODES = [
@@ -27,11 +32,18 @@ const OSIS_CODES = [
   "Mic", "Nah", "Hab", "Zeph", "Hag", "Zech", "Mal", "Matt", "Mark", "Luke", "John", "Acts", "Rom", "1Cor", "2Cor", "Gal",
   "Eph", "Phil", "Col", "1Thess", "2Thess", "1Tim", "2Tim", "Titus", "Phlm", "Heb", "Jas", "1Pet", "2Pet", "1John", "2John",
   "3John", "Jude", "Rev",
+  "Tob", "Jdt", "AddEsth", "Wis", "Sir", "Bar", "EpJer", "PrAzar", "Sus", "Bel", "1Macc", "2Macc", "1Esd", "PrMan",
 ];
 
 const ALIASES: Record<string, number> = {
   psalm: 18, songofsongs: 21, canticles: 21, canticleofcanticles: 21, revelationofjohn: 65, revelations: 65,
   apocalypse: 65, qoheleth: 20,
+  // Deuterocanonical names as Bibles print them.
+  greekesther: 68, esthergreek: 68, esthergk: 68, additionstoesther: 68, restofesther: 68, esthergr: 68,
+  wisdom: 69, bookofwisdom: 69, ecclesiasticus: 70, wisdomofbensira: 70, bensira: 70,
+  epistleofjeremiah: 72, epistleofjeremy: 72, songofthethreeyoungmen: 73, songofthethreejews: 73,
+  prayerofazariahandthesongofthethreejews: 73, songofthethree: 73, prayerofmanasses: 79,
+  "1maccabees": 76, "2maccabees": 77, "1esdras": 78,
 };
 
 const norm = (s: string) =>
@@ -59,7 +71,7 @@ const BOOK_INDEX: Map<string, number> = (() => {
   return m;
 })();
 
-/** A book from a name, code or number (1–66). Null when unknown. */
+/** A book from a name, code or number (1–66). Null when unknown. Numbers past 66 differ between files, so those go by name. */
 export function resolveBook(raw: string | number): number | null {
   const s = String(raw).trim();
   if (/^\d+$/.test(s)) {
@@ -93,7 +105,7 @@ interface Collector {
 }
 
 function collector(): Collector {
-  return { books: Array.from({ length: 66 }, () => []), verses: 0, unknownBooks: new Set() };
+  return { books: Array.from({ length: BOOKS.length }, () => []), verses: 0, unknownBooks: new Set() };
 }
 
 function put(c: Collector, book: number | null, bookLabel: string, chapter: number, verse: number, text: string) {
@@ -185,7 +197,7 @@ function parseZefania(xml: string, c: Collector) {
   for (let b; (b = bookRe.exec(body)); ) {
     const num = b[1].match(/\bbnumber="(\d+)"/i)?.[1];
     const name = b[1].match(/\bbname="([^"]+)"/i)?.[1] ?? "";
-    const book = num ? resolveBook(num) : resolveBook(name);
+    const book = (num ? resolveBook(num) : null) ?? resolveBook(name);
     const chRe = /<CHAPTER\b([^>]*)>([\s\S]*?)<\/CHAPTER>/gi;
     for (let ch; (ch = chRe.exec(b[2])); ) {
       const chapter = Number(ch[1].match(/\bcnumber="(\d+)"/i)?.[1]);
@@ -202,7 +214,7 @@ function parseJson(text: string, c: Collector) {
   // The app's own shape.
   if (Array.isArray(data?.books) && Array.isArray(data.books[0]) && (data.books[0].length === 0 || Array.isArray(data.books[0][0]))) {
     (data.books as string[][][]).forEach((chs, b) =>
-      chs?.forEach((vs, ci) => vs?.forEach((t, vi) => put(c, b < 66 ? b : null, `book ${b + 1}`, ci + 1, vi + 1, String(t ?? "")))),
+      chs?.forEach((vs, ci) => vs?.forEach((t, vi) => put(c, b < BOOKS.length ? b : null, `book ${b + 1}`, ci + 1, vi + 1, String(t ?? "")))),
     );
     return;
   }
@@ -305,13 +317,15 @@ export function detectFormat(name: string, text: string): BibleFormat {
 // Result
 
 export interface ImportReport {
-  /** Ready to save: 66 books, every chapter the KJV has, gaps as "". */
+  /** Ready to save: 66 books (then any Deuterocanonical ones), every chapter the KJV has, gaps as "". */
   books: string[][][];
   formats: BibleFormat[];
   verses: number;
-  /** Books with at least one verse. */
+  /** Of the 66, books with at least one verse. */
   booksFound: number;
-  /** Books with no text at all (a New Testament on its own has 39). */
+  /** Deuterocanonical books with text (the NRSVUE has 14). */
+  deuteroFound: number;
+  /** Of the 66, books with no text at all (a New Testament on its own has 39). */
   missingBooks: number[];
   /** Verses the KJV has that this file doesn't (some are normal: Acts 8:37). */
   gaps: number;
@@ -350,7 +364,7 @@ export function importBible(files: { name: string; text: string }[], kjvShape: n
   const missingBooks: number[] = [];
   const books = c.books.map((chapters, b) => {
     const kjv = kjvShape[b] ?? [];
-    if (!chapters.some((ch) => ch?.some(Boolean))) missingBooks.push(b);
+    if (b < CANON && !chapters.some((ch) => ch?.some(Boolean))) missingBooks.push(b);
     const count = Math.max(kjv.length, chapters.length);
     const out: string[][] = [];
     for (let ch = 0; ch < count; ch++) {
@@ -363,11 +377,18 @@ export function importBible(files: { name: string; text: string }[], kjvShape: n
     return out;
   });
 
+  // Only as many books as the file needs: the 66, then Deuterocanonical
+  // books up to the last one it has.
+  let last = books.length;
+  while (last > CANON && !books[last - 1].some((ch) => ch.some(Boolean))) last--;
+  const deuteroFound = books.slice(CANON, last).filter((chs) => chs.some((ch) => ch.some(Boolean))).length;
+
   return {
-    books,
+    books: books.slice(0, last),
     formats: [...formats],
     verses: c.verses,
-    booksFound: 66 - missingBooks.length,
+    booksFound: CANON - missingBooks.length,
+    deuteroFound,
     missingBooks,
     gaps,
     unknownBooks: [...c.unknownBooks].slice(0, 20),

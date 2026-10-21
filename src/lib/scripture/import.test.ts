@@ -19,7 +19,7 @@ describe("book names", () => {
     expect(resolveBook("Song of Songs")).toBe(21);
     expect(resolveBook("66")).toBe(65);
     expect(resolveBook("Hebrews")).toBe(57);
-    expect(resolveBook("Tobit")).toBeNull();
+    expect(resolveBook("Book of Mormon")).toBeNull();
   });
 });
 
@@ -99,6 +99,42 @@ describe("shape", () => {
   });
 
   it("lists book names it could not match", () => {
-    expect(read("b.csv", "Tobit,1,1,Text").unknownBooks).toEqual(["Tobit"]);
+    expect(read("b.csv", "Enoch,1,1,Text").unknownBooks).toEqual(["Enoch"]);
+  });
+});
+
+describe("Deuterocanonical books", () => {
+  it("knows their names and codes as Bibles print them", () => {
+    expect(resolveBook("Tobit")).toBe(66);
+    expect(resolveBook("Greek Esther")).toBe(68);
+    expect(resolveBook("Wisdom of Solomon")).toBe(69);
+    expect(resolveBook("Ecclesiasticus")).toBe(70);
+    expect(resolveBook("Letter of Jeremiah")).toBe(72);
+    expect(resolveBook("Prayer of Azariah")).toBe(73);
+    expect(resolveBook("Bel and the Dragon")).toBe(75);
+    expect(resolveBook("1 Maccabees")).toBe(76);
+    expect(resolveBook("2MA")).toBe(77);
+    expect(resolveBook("1Esd")).toBe(78);
+    expect(resolveBook("Prayer of Manasseh")).toBe(79);
+    // Numbers past 66 differ between files: never guessed.
+    expect(resolveBook(67)).toBeNull();
+  });
+
+  it("keeps them after the 66, only as far as the file goes", () => {
+    const r = read("bible.csv", "book,chapter,verse,text\nGenesis,1,1,In the beginning\nTobit,1,1,I Tobit walked\nSirach,1,1,All wisdom is from the Lord\n");
+    expect(r.unknownBooks).toEqual([]);
+    expect(r.deuteroFound).toBe(2);
+    expect(r.books.length).toBe(71);
+    expect(r.books[66][0][0]).toBe("I Tobit walked");
+    expect(r.books[70][0][0]).toBe("All wisdom is from the Lord");
+    // The 66 still count as before.
+    expect(r.booksFound).toBe(1);
+    expect(r.missingBooks).not.toContain(66);
+  });
+
+  it("leaves a 66-book file at 66", () => {
+    const r = read("bible.csv", "book,chapter,verse,text\nGenesis,1,1,In the beginning\n");
+    expect(r.books.length).toBe(66);
+    expect(r.deuteroFound).toBe(0);
   });
 });
