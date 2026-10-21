@@ -20,7 +20,9 @@ export function OutputScreen({
   present = false,
   online = false,
   only,
+  noSlides = false,
   chroma,
+  look = false,
 }: {
   token: string;
   layout: SlideLayout;
@@ -33,8 +35,12 @@ export function OutputScreen({
   online?: boolean;
   /** Only scripture or only lyrics; blank while the other is on screen (separate vMix/OBS inputs). */
   only?: "scripture" | "song";
+  /** Scripture and lyrics only: blank while a slide (text, picture, video) is up. */
+  noSlides?: boolean;
   /** A key colour behind everything (lower thirds on green). */
   chroma?: string;
+  /** Frame outputs: the projector's background and styling. */
+  look?: boolean;
 }) {
   const [slide, setSlide] = useState<Slide | null>(null);
   const [visible, setVisible] = useState(false);
@@ -104,7 +110,8 @@ export function OutputScreen({
       if (replacedRef.current) return;
       if (!p || p.at <= latest.current) return;
       latest.current = p.at;
-      if (p.slide && only && (p.slide.kind === "song" ? "song" : p.slide.kind === "text" || p.slide.kind === "image" || p.slide.kind === "video" ? "slide" : "scripture") !== only) {
+      const kind = p.slide ? (p.slide.kind === "song" ? "song" : p.slide.kind === "text" || p.slide.kind === "image" || p.slide.kind === "video" ? "slide" : "scripture") : null;
+      if (p.slide && ((only && kind !== only) || (noSlides && kind === "slide"))) {
         // The other kind went up: this output goes blank.
         setVisible(false);
       } else if (p.slide) {
@@ -168,7 +175,7 @@ export function OutputScreen({
       clearInterval(poll);
       void supabase.removeChannel(channel);
     };
-  }, [token, only]);
+  }, [token, only, noSlides]);
 
   return (
     <div className="fixed inset-0">
@@ -177,6 +184,7 @@ export function OutputScreen({
         layout={online ? (slide?.kind === "song" ? "lower" : "full") : layout}
         visible={visible}
         chroma={online ? CHROMA_GREEN : chroma}
+        look={look}
       />
       {/* A dot the operator can see on the projector; invisible to the room from a distance. */}
       {lost && !replaced && <div className="absolute right-3 bottom-3 h-2 w-2 rounded-full bg-warning" title="Reconnecting" />}

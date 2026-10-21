@@ -8,7 +8,8 @@ export const metadata: Metadata = { title: "Output", robots: { index: false, fol
 // The frame outputs: /screen/<address>/scripture/frame and .../lyrics/frame.
 // Nothing but the words, filling the page at whatever size the OBS browser
 // source is set to (the text area of the church's own lower-third design),
-// on the key green (#00FF00). ?bg=clear makes it see-through instead.
+// on the key green (#00FF00). ?bg=clear makes it see-through instead, and
+// ?bg=look puts it in the projector's own look (background, font, colours).
 const ONLY = { scripture: "scripture", lyrics: "song" } as const;
 
 export default async function FrameOutput({ params, searchParams }: { params: Promise<{ token: string; view: string }>; searchParams: Promise<{ bg?: string }> }) {
@@ -16,5 +17,6 @@ export default async function FrameOutput({ params, searchParams }: { params: Pr
   const { bg } = await searchParams;
   const only = ONLY[view as keyof typeof ONLY];
   if (!only) notFound();
-  return <OutputScreen token={token} layout="frame" only={only} chroma={bg === "clear" ? undefined : CHROMA_GREEN} />;
+  const look = bg === "look";
+  return <OutputScreen token={token} layout="frame" only={only} chroma={bg === "clear" || look ? undefined : CHROMA_GREEN} look={look} />;
 }

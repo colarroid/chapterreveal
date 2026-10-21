@@ -615,7 +615,7 @@ export function Console({ churchId, userId, screenToken, translationId, translat
     // Two columns on desktop: the console on the left, the Bible (search and
     // the chapter) in a sidebar on the right, both filling the window under
     // the header. On narrow screens everything stacks and the page scrolls.
-    <div className="flex flex-col gap-2 px-2 pb-2 lg:grid lg:h-[calc(100dvh-4rem)] lg:min-h-[520px] lg:grid-cols-[minmax(0,1fr)_minmax(320px,400px)]">
+    <div className="flex flex-col gap-2 px-2 pb-2 lg:grid lg:h-[calc(100dvh-4rem)] lg:min-h-[660px] lg:grid-cols-[minmax(0,1fr)_300px] xl:grid-cols-[minmax(0,1fr)_340px] 2xl:grid-cols-[minmax(0,1fr)_400px]">
       <div className="flex min-h-0 flex-col gap-2">
         <ControlBar live={live} auto={auto} onToggleAuto={() => setAuto((v) => !v)} speechToScreen={speechToScreen} />
   
@@ -635,7 +635,7 @@ export function Console({ churchId, userId, screenToken, translationId, translat
           {(live.phase === "idle" || live.phase === "starting") && <StartOverlay live={live} ready={!!bible} />}
           {/* Suggestions */}
           <section className="flex min-h-0 flex-col rounded-lg bg-surface">
-            <PanelTitle title="Heard references" right={<span className="hidden items-center gap-1.5 text-xs text-faint sm:flex"><Kbd>Alt</Kbd> + <Kbd>1</Kbd> to <Kbd>9</Kbd> to show</span>} />
+            <PanelTitle title="Heard references" right={<span className="hidden items-center gap-1.5 text-xs whitespace-nowrap text-faint 2xl:flex"><Kbd>Alt</Kbd> + <Kbd>1</Kbd> to <Kbd>9</Kbd> to show</span>} />
             <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-3 pb-3">
               {live.notFound.map((n) => (
                 <NotFoundCard key={n.key} n={n} onDismiss={live.dismissNotFound} />
@@ -665,16 +665,17 @@ export function Console({ churchId, userId, screenToken, translationId, translat
           </section>
   
           {/* Screen control */}
-          <section className="flex min-h-0 flex-col rounded-lg bg-surface">
+          {/* @container: the buttons below go icon-only when this panel is narrow. */}
+          <section className="@container flex min-h-0 flex-col rounded-lg bg-surface">
             {/* Header: what the screen is doing on the left, the Live switch on the right. */}
             <div className="flex h-14 shrink-0 items-center gap-3 px-4">
-              <h2 className="font-bold">On screen</h2>
+              <h2 className="font-bold whitespace-nowrap">On screen</h2>
               {isLive ? (
-                <span className="inline-flex items-center gap-1.5 text-xs font-bold text-negative">
+                <span className="inline-flex items-center gap-1.5 text-xs font-bold whitespace-nowrap text-negative">
                   <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-negative" /> Live
                 </span>
               ) : (
-                <span className="text-xs font-bold text-faint">Not live · screen blank</span>
+                <span className="min-w-0 truncate text-xs font-bold text-faint">Not live · screen blank</span>
               )}
               <div className="ml-auto flex items-center gap-2">
                 <button
@@ -723,8 +724,8 @@ export function Console({ churchId, userId, screenToken, translationId, translat
                   </div>
               {/* Under the preview, as wide as it: the stepper on the left,
                   sending the output to the projector on the right. */}
-              <div className="flex shrink-0 flex-wrap items-center gap-2">
-                <div className="inline-flex h-10 items-center rounded-full bg-surface-2 p-0.5">
+              <div className="flex h-10 shrink-0 items-center gap-2 overflow-x-auto">
+                <div className="inline-flex h-10 shrink-0 items-center rounded-full bg-surface-2 p-0.5">
                   <IconButton label="Previous verse (←)" onClick={() => step(-1)} disabled={!selection} className="h-9 w-9 text-ink hover:bg-surface-3">
                     <ChevronLeft size={18} />
                   </IconButton>
@@ -741,7 +742,7 @@ export function Console({ churchId, userId, screenToken, translationId, translat
                   </Chip>
                 )}
                 {selection && selection.slides.length > 1 && (
-                  <ol className="flex flex-wrap gap-1.5">
+                  <ol className="flex shrink-0 gap-1.5">
                     {selection.slides.map((sl, i) => (
                       <li key={sl.label + i}>
                         <button
@@ -756,40 +757,40 @@ export function Console({ churchId, userId, screenToken, translationId, translat
                     ))}
                   </ol>
                 )}
-                {outputUrl && (
-                  <div className="ml-auto flex items-center gap-1">
-                    <a
-                      href={outputUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      aria-label="Open the output page in a new tab"
-                      title="Open the output page in a new tab"
-                      className="grid h-10 w-10 place-items-center rounded-full text-muted transition hover:bg-surface-2 hover:text-ink"
-                    >
-                      <ExternalLink size={16} />
-                    </a>
-                    {/* The projector window isn't filling its screen (the address bar shows): one click here fixes it. */}
-                    {projectorOpen && !projectorFull && (
-                      <Button size="sm" variant="outline" className="h-10" onClick={fillProjectorScreen} title="The projector window isn't full screen yet. Click to fill it.">
-                        <Maximize size={14} /> Fill projector screen
-                      </Button>
-                    )}
-                    {projectorOpen ? (
-                      <Button size="sm" variant="secondary" className="h-10" onClick={stopPresenting} title="Close the projector window">
-                        <MonitorOff size={14} /> Stop presenting
-                      </Button>
-                    ) : (
-                      <Button size="sm" className="h-10" loading={presenting} onClick={present} title="Open the output full screen on the projector (second monitor)">
-                        <MonitorUp size={14} /> Present
-                      </Button>
-                    )}
-                    {canEditDisplay && <DisplayQuick churchId={churchId} kind="scripture" display={display} onChange={setDisplay} />}
-                  </div>
-                )}
               </div>
                   </div>
                 </div>
             </div>
+            {outputUrl && (
+                    <div className="mt-3 flex shrink-0 flex-wrap items-center justify-end gap-1 @max-[34rem]:flex-nowrap">
+                      <a
+                        href={outputUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        aria-label="Open the output page in a new tab"
+                        title="Open the output page in a new tab"
+                        className="grid h-10 w-10 place-items-center rounded-full text-muted transition hover:bg-surface-2 hover:text-ink"
+                      >
+                        <ExternalLink size={16} />
+                      </a>
+                      {/* The projector window isn't filling its screen (the address bar shows): one click here fixes it. */}
+                      {projectorOpen && !projectorFull && (
+                        <Button size="sm" variant="outline" className="h-10" onClick={fillProjectorScreen} title="The projector window isn't full screen yet. Click to fill it.">
+                          <Maximize size={14} /> <span className={BUTTON_LABEL}>Fill projector screen</span>
+                        </Button>
+                      )}
+                      {projectorOpen ? (
+                        <Button size="sm" variant="secondary" className="h-10" onClick={stopPresenting} title="Close the projector window">
+                          <MonitorOff size={14} /> <span className={BUTTON_LABEL}>Stop presenting</span>
+                        </Button>
+                      ) : (
+                        <Button size="sm" className="h-10" loading={presenting} onClick={present} title="Open the output full screen on the projector (second monitor)">
+                          <MonitorUp size={14} /> Present
+                        </Button>
+                      )}
+                      {canEditDisplay && <DisplayQuick churchId={churchId} kind="scripture" display={display} onChange={setDisplay} labelClassName={BUTTON_LABEL} />}
+                    </div>
+                  )}
           </div>
           </section>
         </div>
@@ -943,7 +944,7 @@ function ControlBar({
   const clock = `${Math.floor(elapsed / 3600)}:${String(Math.floor((elapsed % 3600) / 60)).padStart(2, "0")}:${String(elapsed % 60).padStart(2, "0")}`;
 
   return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-lg bg-surface px-4 py-3">
+    <div className="@container flex flex-wrap items-center gap-x-4 gap-y-3 rounded-lg bg-surface px-4 py-3">
       <label className="flex min-w-0 items-center gap-2.5">
         <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-surface-2 text-muted">
           <Mic size={17} />
@@ -956,10 +957,10 @@ function ControlBar({
           disabled={live.phase !== "idle"}
           placeholder="No inputs found"
           options={live.inputs.map((d) => ({ value: d.deviceId, label: d.label }))}
-          className="h-9 w-64 max-w-full text-sm font-semibold"
+          className="h-9 w-36 max-w-full text-sm font-semibold @[50rem]:w-44 @[64rem]:w-64"
         />
       </label>
-      <LevelMeter levelRef={live.levelRef} active={live.phase === "live" || live.testing} />
+      <LevelMeter levelRef={live.levelRef} active={live.phase === "live" || live.testing} labelClassName="hidden @[52rem]:inline" />
       {live.phase === "idle" && (
         // Checks the desk feed before the service: the meter moves with the
         // input, no transcription. Also unlocks the real device names.
@@ -1088,7 +1089,23 @@ export function EndServiceButton({
 
 // Draws straight to the DOM on each animation frame from the hook's level
 // ref, so audio-rate updates never re-render React.
-export function LevelMeter({ levelRef, active }: { levelRef: React.RefObject<{ rms: number; peak: number }>; active: boolean }) {
+/**
+ * Button words that give way to the icon alone when the On screen panel is
+ * narrow (each button's title still says what it does). Present keeps its
+ * word: it never shows alongside Fill projector screen and Stop presenting.
+ */
+const BUTTON_LABEL = "hidden @[34rem]:inline";
+
+export function LevelMeter({
+  levelRef,
+  active,
+  labelClassName = "",
+}: {
+  levelRef: React.RefObject<{ rms: number; peak: number }>;
+  active: boolean;
+  /** Hides the "Level" word where room is short (the bar alone still shows it). */
+  labelClassName?: string;
+}) {
   const bar = useRef<HTMLDivElement>(null);
   const tick = useRef<HTMLDivElement>(null);
   const label = useRef<HTMLSpanElement>(null);
@@ -1129,7 +1146,7 @@ export function LevelMeter({ levelRef, active }: { levelRef: React.RefObject<{ r
         <div ref={bar} className="absolute inset-y-0 left-0 w-0 rounded-full bg-accent-fill" />
         <div ref={tick} className="absolute inset-y-0 w-0.5 bg-ink/60" />
       </div>
-      <span ref={label} className="text-xs font-semibold text-faint">
+      <span ref={label} className={`text-xs font-semibold text-faint ${labelClassName}`}>
         Level
       </span>
     </div>
@@ -1138,8 +1155,8 @@ export function LevelMeter({ levelRef, active }: { levelRef: React.RefObject<{ r
 
 function PanelTitle({ title, right }: { title: string; right?: React.ReactNode }) {
   return (
-    <div className="flex h-12 shrink-0 items-center justify-between px-4">
-      <h2 className="font-bold">{title}</h2>
+    <div className="flex h-12 shrink-0 items-center justify-between gap-3 px-4">
+      <h2 className="truncate font-bold whitespace-nowrap">{title}</h2>
       {right}
     </div>
   );
@@ -1262,7 +1279,7 @@ const ChapterList = memo(function ChapterList({
   return (
     <div className="flex min-h-[200px] flex-1 flex-col overflow-hidden rounded-lg bg-surface-2 lg:min-h-0">
       <div className="flex h-10 shrink-0 items-center gap-2 border-b border-line pr-1.5 pl-4">
-        <span className="font-bold">{formatRef({ book, chapter })}</span>
+        <span className="font-bold whitespace-nowrap">{formatRef({ book, chapter })}</span>
         {/* What's typed shows here as it's typed, then where it landed. */}
         {typed ? (
           <span className="inline-flex h-6 items-center rounded-full bg-accent-fill px-2.5 text-xs font-bold text-on-accent tabular-nums">
@@ -1277,7 +1294,7 @@ const ChapterList = memo(function ChapterList({
             {note.text}
           </span>
         ) : (
-          <span className="hidden text-xs text-faint sm:inline">Type a verse number to jump</span>
+          <span className="hidden truncate text-xs text-faint 2xl:inline">Type a verse number to jump</span>
         )}
         <IconButton label="Previous chapter" onClick={() => onMove(-1)} className="ml-auto h-8 w-8">
           <ChevronLeft size={17} />

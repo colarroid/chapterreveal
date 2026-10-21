@@ -76,6 +76,7 @@ export const SlideView = memo(function SlideView({
   theme,
   chroma,
   muted = false,
+  look = false,
 }: {
   slide: Slide | null;
   layout?: SlideLayout;
@@ -90,6 +91,11 @@ export const SlideView = memo(function SlideView({
   chroma?: string;
   /** Video slides: a preview (the console) stays silent and still. */
   muted?: boolean;
+  /**
+   * Frame layout only: the projector's own look (background, font, colours,
+   * capitals, alignment) instead of the lower third's plain words.
+   */
+  look?: boolean;
 }) {
   const t = themeFor(slide, theme);
   const font = FONTS.find((f) => f.key === t.font) ?? FONTS[0];
@@ -104,6 +110,8 @@ export const SlideView = memo(function SlideView({
   const lower = layout === "lower" || frame;
   // Its own position, size and capitals (a look saved before it had them gets the defaults).
   const lt = t.lower ?? DEFAULT_LOWER;
+  // A frame in the projector's look styles its words like the projector.
+  const styled = frame && look;
   // On a key colour (green screen) nothing may be green: the keyer removes
   // green pixels wherever they are, so the reference would vanish. Words and
   // reference are white there, straight on the green (no band), with a hard
@@ -111,13 +119,13 @@ export const SlideView = memo(function SlideView({
   // shadow is half see-through, and comes out as a green haze once keyed.
   const chromaEdge = "0.045em 0.045em 0 #000, -0.02em -0.02em 0 #000, 0.02em -0.02em 0 #000, -0.02em 0.02em 0 #000";
   // A frame's words are the colour the church picks, to match its design.
-  const textColor = frame ? lt.color : lower || chroma ? "#ffffff" : t.textColor;
-  const accent = frame ? lt.color : chroma ? "#ffffff" : lower ? "#1ed760" : t.accentColor;
+  const textColor = styled ? t.textColor : frame ? lt.color : lower || chroma ? "#ffffff" : t.textColor;
+  const accent = styled ? t.accentColor : frame ? lt.color : chroma ? "#ffffff" : lower ? "#1ed760" : t.accentColor;
   const words: CSSProperties = {
     fontFamily: font.family,
     fontWeight: font.weight,
-    textTransform: (lower ? lt.uppercase : t.uppercase) ? "uppercase" : undefined,
-    textShadow: chroma ? chromaEdge : t.shadow && !lower ? "0 0.06em 0.3em rgba(0,0,0,0.7)" : undefined,
+    textTransform: (lower && !styled ? lt.uppercase : t.uppercase) ? "uppercase" : undefined,
+    textShadow: chroma ? chromaEdge : t.shadow && (!lower || styled) ? "0 0.06em 0.3em rgba(0,0,0,0.7)" : undefined,
   };
   // Lower third: the largest size (--fit, 0.2 to 1) at which the words fit
   // the box, found by measuring before the screen paints (a few quick
@@ -167,7 +175,7 @@ export const SlideView = memo(function SlideView({
       if (frame) cancelAnimationFrame(frame);
     };
   }, [lower, fitKey]);
-  const scale = lower ? lt.scale : t.scale;
+  const scale = lower && !styled ? lt.scale : t.scale;
   // Lower-third sizes follow --fit; the projector's are plain. A frame can be
   // any shape (long and thin, or square), so its words start from whichever
   // of its height or width is tighter.
@@ -228,8 +236,8 @@ export const SlideView = memo(function SlideView({
       )
     );
 
-  if ((slide?.kind === "image" || slide?.kind === "video") && slide.image && !lower) {
-    // A picture or video slide fills the screen as it is: no theme, no words.
+  if ((slide?.kind === "image" || slide?.kind === "video") && slide.image && (!lower || frame)) {
+    // A picture or video slide fills the screen (or the frame) as it is: no theme, no words.
     return (
       <div className="relative h-full w-full overflow-hidden bg-black" style={chroma ? { background: chroma } : undefined}>
         <div className={`absolute inset-0 transition-opacity duration-200 ${on ? "opacity-100" : "opacity-0"}`}>
@@ -254,16 +262,24 @@ export const SlideView = memo(function SlideView({
     );
   }
 
-  const alignText = lt.align === "center" ? "text-center" : lt.align === "right" ? "text-right" : "";
+  const align = styled ? t.align : lt.align;
+  const alignText = align === "center" ? "text-center" : align === "right" ? "text-right" : "";
 
   if (frame) {
-    // Nothing but the words, filling the frame: see-through behind them (OBS
-    // browser sources show the page's transparency), or green for vMix.
+    // The words filling the frame: on green or see-through (OBS browser
+    // sources show the page's transparency), or in the projector's look, its
+    // background behind them and its top/middle/bottom placement.
+    const place = styled && t.position === "top" ? "justify-start" : styled && t.position === "bottom" ? "justify-end" : "justify-center";
     return (
-      <div data-slide-root className="relative h-full w-full overflow-hidden [container-type:size]" style={{ background: chroma ?? "transparent" }}>
+      <div data-slide-root className="relative h-full w-full overflow-hidden [container-type:size]" style={{ background: chroma ?? (styled ? "#000000" : "transparent") }}>
+        {styled && (
+          <div className={`absolute inset-0 transition-opacity duration-200 ${on ? "opacity-100" : "opacity-0"}`}>
+            <Backdrop background={t.background} dim={t.dim} />
+          </div>
+        )}
         <div
           ref={box}
-          className={`flex h-full w-full flex-col justify-center overflow-hidden px-[1.5cqw] py-[5cqh] ${alignText} transition-opacity duration-150 ${on ? "opacity-100" : "opacity-0"}`}
+          className={`relative flex h-full w-full flex-col ${place} overflow-hidden px-[3cqw] py-[6cqh] ${alignText} transition-opacity duration-150 ${on ? "opacity-100" : "opacity-0"}`}
           style={{ color: textColor }}
         >
           {body}

@@ -21,11 +21,14 @@ export function DisplayQuick({
   kind,
   display,
   onChange,
+  labelClassName = "",
 }: {
   churchId: string;
   kind: keyof DisplaySettings;
   display: DisplaySettings;
   onChange: (d: DisplaySettings) => void;
+  /** Lets a console hide the button's word on narrow panels (the icon and title stay). */
+  labelClassName?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -98,7 +101,7 @@ export function DisplayQuick({
         title="Background and text for the projector"
         onClick={() => setOpen((o) => !o)}
       >
-        <Palette size={14} /> Design
+        <Palette size={14} /> <span className={labelClassName}>Design</span>
       </Button>
       {open && (
         <div role="dialog" aria-label="Display" className="absolute right-0 bottom-[calc(100%+8px)] z-40 w-[340px] max-w-[calc(100vw-32px)] space-y-3 rounded-xl bg-menu p-3 shadow-pop ring-1 ring-line">
