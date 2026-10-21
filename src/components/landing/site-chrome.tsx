@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ThemeToggle } from "@/components/theme";
 import { Logo } from "@/components/ui";
+import { LinkPending } from "./link-pending";
 import { APP_NAME, LEGAL } from "@/lib/brand";
 
 /**
@@ -33,8 +34,12 @@ export function SiteHeader({ home = false, signedIn = false }: { home?: boolean;
           {/* Signed in: straight back to work. */}
           <Link
             href={signedIn ? "/dashboard" : "/signup"}
-            className="flex h-[38px] items-center rounded-full bg-ink px-4 text-bg transition hover:opacity-85"
+            // Signed in, the console is where they're going: fetch it in the
+            // background while they read, so the click opens it straight away.
+            prefetch={signedIn ? true : undefined}
+            className="flex h-[38px] items-center gap-2 rounded-full bg-ink px-4 text-bg transition hover:opacity-85"
           >
+            <LinkPending />
             {signedIn ? "Open console" : "Sign up"}
           </Link>
         </nav>
