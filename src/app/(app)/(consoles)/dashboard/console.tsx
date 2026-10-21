@@ -699,10 +699,9 @@ export function Console({ churchId, userId, screenToken, translationId, translat
           <div className="flex min-h-0 flex-1 flex-col px-4 pb-4">
             <div className="flex min-h-0 flex-col lg:flex-1">
               <div className="flex h-[60vw] items-center justify-center [container-type:size] lg:h-auto lg:min-h-[150px] lg:flex-1">
-                  <div className="flex w-[min(100cqw,calc((100cqh-50px)*16/9))] flex-col gap-2.5">
+                  <div className="flex w-[min(100cqw,calc(100cqh*16/9))] flex-col">
                   {/* Like a broadcast monitor: red outline and LIVE when it is on
-                      the screen, PREVIEW when it is not. Sized to leave room for
-                      the stepper below it. */}
+                      the screen, PREVIEW when it is not. */}
                   <div
                     className={`relative aspect-video w-full overflow-hidden rounded-lg shadow-pop ${
                       onAir ? "ring-2 ring-negative" : "ring-1 ring-line"
@@ -722,75 +721,78 @@ export function Console({ churchId, userId, screenToken, translationId, translat
                       </span>
                     )}
                   </div>
-              {/* Under the preview, as wide as it: the stepper on the left,
-                  sending the output to the projector on the right. */}
-              <div className="flex h-10 shrink-0 items-center gap-2 overflow-x-auto">
-                <div className="inline-flex h-10 shrink-0 items-center rounded-full bg-surface-2 p-0.5">
-                  <IconButton label="Previous verse (←)" onClick={() => step(-1)} disabled={!selection} className="h-9 w-9 text-ink hover:bg-surface-3">
-                    <ChevronLeft size={18} />
-                  </IconButton>
-                  <span className={`min-w-28 px-2 text-center text-sm font-bold tabular-nums ${selectedSlide ? "text-ink" : "text-faint"}`}>
-                    {selectedSlide?.label ?? "No verse yet"}
-                  </span>
-                  <IconButton label="Next verse (→)" onClick={() => step(1)} disabled={!selection} className="h-9 w-9 text-ink hover:bg-surface-3">
-                    <ChevronRight size={18} />
-                  </IconButton>
-                </div>
-                {autoKey !== null && autoKey === onAirKey && (
-                  <Chip>
-                    <Zap size={12} className="fill-current" /> Auto
-                  </Chip>
-                )}
-                {selection && selection.slides.length > 1 && (
-                  <ol className="flex shrink-0 gap-1.5">
-                    {selection.slides.map((sl, i) => (
-                      <li key={sl.label + i}>
-                        <button
-                          onClick={() => putUp({ ...selection, index: i }, "step")}
-                          className={`h-7 rounded-full px-3 text-xs font-bold transition ${
-                            i === selection.index ? "bg-accent-fill text-on-accent" : "bg-surface-2 text-muted hover:text-ink"
-                          }`}
-                        >
-                          {i + 1}/{selection.slides.length}
-                        </button>
-                      </li>
-                    ))}
-                  </ol>
-                )}
-              </div>
                   </div>
                 </div>
             </div>
-            {outputUrl && (
-                    <div className="mt-3 flex shrink-0 flex-wrap items-center justify-end gap-1 @max-[34rem]:flex-nowrap">
-                      <a
-                        href={outputUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        aria-label="Open the output page in a new tab"
-                        title="Open the output page in a new tab"
-                        className="grid h-10 w-10 place-items-center rounded-full text-muted transition hover:bg-surface-2 hover:text-ink"
-                      >
-                        <ExternalLink size={16} />
-                      </a>
-                      {/* The projector window isn't filling its screen (the address bar shows): one click here fixes it. */}
-                      {projectorOpen && !projectorFull && (
-                        <Button size="sm" variant="outline" className="h-10" onClick={fillProjectorScreen} title="The projector window isn't full screen yet. Click to fill it.">
-                          <Maximize size={14} /> <span className={BUTTON_LABEL}>Fill projector screen</span>
-                        </Button>
-                      )}
-                      {projectorOpen ? (
-                        <Button size="sm" variant="secondary" className="h-10" onClick={stopPresenting} title="Close the projector window">
-                          <MonitorOff size={14} /> <span className={BUTTON_LABEL}>Stop presenting</span>
-                        </Button>
-                      ) : (
-                        <Button size="sm" className="h-10" loading={presenting} onClick={present} title="Open the output full screen on the projector (second monitor)">
-                          <MonitorUp size={14} /> Present
-                        </Button>
-                      )}
-                      {canEditDisplay && <DisplayQuick churchId={churchId} kind="scripture" display={display} onChange={setDisplay} labelClassName={BUTTON_LABEL} />}
-                    </div>
+            {/* Under the preview: the stepper on the left, sending the output to
+                the projector on the right; on a narrow panel the buttons wrap
+                below (outside the preview's box, which shrinks to make room). */}
+            <div className="mt-3 flex shrink-0 flex-wrap items-center gap-2">
+              <div className="flex min-w-0 items-center gap-2 overflow-x-auto">
+                  <div className="inline-flex h-10 shrink-0 items-center rounded-full bg-surface-2 p-0.5">
+                    <IconButton label="Previous verse (←)" onClick={() => step(-1)} disabled={!selection} className="h-9 w-9 text-ink hover:bg-surface-3">
+                      <ChevronLeft size={18} />
+                    </IconButton>
+                    <span className={`min-w-28 px-2 text-center text-sm font-bold tabular-nums ${selectedSlide ? "text-ink" : "text-faint"}`}>
+                      {selectedSlide?.label ?? "No verse yet"}
+                    </span>
+                    <IconButton label="Next verse (→)" onClick={() => step(1)} disabled={!selection} className="h-9 w-9 text-ink hover:bg-surface-3">
+                      <ChevronRight size={18} />
+                    </IconButton>
+                  </div>
+                  {autoKey !== null && autoKey === onAirKey && (
+                    <Chip>
+                      <Zap size={12} className="fill-current" /> Auto
+                    </Chip>
                   )}
+                  {selection && selection.slides.length > 1 && (
+                    <ol className="flex shrink-0 gap-1.5">
+                      {selection.slides.map((sl, i) => (
+                        <li key={sl.label + i}>
+                          <button
+                            onClick={() => putUp({ ...selection, index: i }, "step")}
+                            className={`h-7 rounded-full px-3 text-xs font-bold transition ${
+                              i === selection.index ? "bg-accent-fill text-on-accent" : "bg-surface-2 text-muted hover:text-ink"
+                            }`}
+                          >
+                            {i + 1}/{selection.slides.length}
+                          </button>
+                        </li>
+                      ))}
+                    </ol>
+                  )}
+              </div>
+              {outputUrl && (
+                <div className="ml-auto flex items-center gap-1">
+                    <a
+                      href={outputUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      aria-label="Open the output page in a new tab"
+                      title="Open the output page in a new tab"
+                      className="grid h-10 w-10 place-items-center rounded-full text-muted transition hover:bg-surface-2 hover:text-ink"
+                    >
+                      <ExternalLink size={16} />
+                    </a>
+                    {/* The projector window isn't filling its screen (the address bar shows): one click here fixes it. */}
+                    {projectorOpen && !projectorFull && (
+                      <Button size="sm" variant="outline" className="h-10" onClick={fillProjectorScreen} title="The projector window isn't full screen yet. Click to fill it.">
+                        <Maximize size={14} /> <span className={BUTTON_LABEL}>Fill projector screen</span>
+                      </Button>
+                    )}
+                    {projectorOpen ? (
+                      <Button size="sm" variant="secondary" className="h-10" onClick={stopPresenting} title="Close the projector window">
+                        <MonitorOff size={14} /> <span className={BUTTON_LABEL}>Stop presenting</span>
+                      </Button>
+                    ) : (
+                      <Button size="sm" className="h-10" loading={presenting} onClick={present} title="Open the output full screen on the projector (second monitor)">
+                        <MonitorUp size={14} /> Present
+                      </Button>
+                    )}
+                    {canEditDisplay && <DisplayQuick churchId={churchId} kind="scripture" display={display} onChange={setDisplay} labelClassName={BUTTON_LABEL} />}
+                </div>
+              )}
+            </div>
           </div>
           </section>
         </div>
