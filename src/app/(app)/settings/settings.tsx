@@ -43,7 +43,7 @@ interface Props {
 
 function Section({ icon: Icon, title, description, children }: { icon: typeof Users; title: string; description?: string; children: React.ReactNode }) {
   return (
-    <section className="rounded-lg bg-surface p-5 sm:p-6">
+    <section className="card p-5 sm:p-6">
       <div className="flex items-start gap-3">
         <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-surface-2 text-ink">
           <Icon size={18} />
@@ -139,11 +139,11 @@ export function Settings(p: Props) {
         </div>
       )}
 
-      <div className="mt-6 space-y-2">
+      <div className="mt-6 space-y-4">
         {p.isAdmin && (
           <Link
             href="/settings/display"
-            className="flex items-center gap-3 rounded-lg bg-surface p-5 transition hover:bg-surface-2 sm:p-6"
+            className="flex items-center gap-3 card p-5 transition hover:bg-surface-2 sm:p-6"
           >
             <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-surface-2 text-ink">
               <Palette size={18} />

@@ -150,7 +150,7 @@ export function AppHeader({ churchName, email, firstName, lastName }: { churchNa
   const [pill, setPill] = useState(false);
 
   return (
-    <header className="flex h-16 shrink-0 items-center gap-4 bg-bg px-4">
+    <header className="flex h-16 shrink-0 items-center gap-4 px-4">
       {/* The wide logo; the mark alone where phones are tight on room. */}
       <span className="sm:hidden">
         <Logo href="/dashboard" variant="icon" className="h-9" />

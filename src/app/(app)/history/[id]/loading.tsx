@@ -11,12 +11,12 @@ export default function Loading() {
         <Skeleton className="h-6 w-32 rounded-full" />
       </div>
       <div className="mt-8 grid gap-2 lg:grid-cols-[minmax(0,1fr)_18rem]">
-        <div className="space-y-3 rounded-lg bg-surface p-5">
+        <div className="space-y-3 card p-5">
           {Array.from({ length: 8 }, (_, i) => (
             <Skeleton key={i} className={`h-4 ${i % 3 === 2 ? "w-2/3" : "w-full"}`} />
           ))}
         </div>
-        <div className="h-fit space-y-3 rounded-lg bg-surface p-5">
+        <div className="h-fit space-y-3 card p-5">
           {Array.from({ length: 4 }, (_, i) => (
             <Skeleton key={i} className="h-4 w-full" />
           ))}

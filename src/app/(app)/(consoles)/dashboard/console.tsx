@@ -622,8 +622,8 @@ export function Console({ churchId, userId, screenToken, translationId, translat
     // Two columns on desktop: the console on the left, the Bible (search and
     // the chapter) in a sidebar on the right, both filling the window under
     // the header. On narrow screens everything stacks and the page scrolls.
-    <div className="flex flex-col gap-2 px-2 pb-2 lg:grid lg:h-[calc(100dvh-4rem)] lg:min-h-[660px] lg:grid-cols-[minmax(0,1fr)_300px] xl:grid-cols-[minmax(0,1fr)_340px] 2xl:grid-cols-[minmax(0,1fr)_400px]">
-      <div className="flex min-h-0 flex-col gap-2">
+    <div className="flex flex-col gap-4 px-4 pb-4 lg:grid lg:h-[calc(100dvh-4rem)] lg:min-h-[660px] lg:grid-cols-[minmax(0,1fr)_300px] xl:grid-cols-[minmax(0,1fr)_340px] 2xl:grid-cols-[minmax(0,1fr)_400px]">
+      <div className="flex min-h-0 flex-col gap-4">
         <ControlBar live={live} auto={auto} onToggleAuto={() => setAuto((v) => !v)} speechToScreen={speechToScreen} />
   
         {warnings.length > 0 && (
@@ -638,10 +638,10 @@ export function Console({ churchId, userId, screenToken, translationId, translat
         )}
   
         <EndServiceButton live={live} />
-        <div className="relative grid min-h-0 flex-1 gap-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
+        <div className="relative grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
           {(live.phase === "idle" || live.phase === "starting") && <StartOverlay live={live} ready={!!bible} />}
           {/* Suggestions */}
-          <section className="flex min-h-0 flex-col rounded-lg bg-surface">
+          <section className="flex min-h-0 flex-col card">
             <PanelTitle title="Heard references" right={<span className="hidden items-center gap-1.5 text-xs whitespace-nowrap text-faint 2xl:flex"><Kbd>Alt</Kbd> + <Kbd>1</Kbd> to <Kbd>9</Kbd> to show</span>} />
             <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-3 pb-3">
               {live.notFound.map((n) => (
@@ -673,7 +673,7 @@ export function Console({ churchId, userId, screenToken, translationId, translat
   
           {/* Screen control */}
           {/* @container: the buttons below go icon-only when this panel is narrow. */}
-          <section className="@container flex min-h-0 flex-col rounded-lg bg-surface">
+          <section className="@container flex min-h-0 flex-col card">
             {/* Header: what the screen is doing on the left, the Live switch on the right. */}
             <div className="flex h-14 shrink-0 items-center gap-3 px-4">
               <h2 className="font-bold whitespace-nowrap">On screen</h2>
@@ -811,7 +811,7 @@ export function Console({ churchId, userId, screenToken, translationId, translat
       </div>
 
       {/* Bible sidebar: find a verse, then browse its chapter. */}
-      <aside className="flex min-h-[460px] flex-col gap-3 rounded-lg bg-surface p-3 lg:min-h-0">
+      <aside className="flex min-h-[460px] flex-col gap-3 card p-3 lg:min-h-0">
         <div className="flex items-center gap-2 px-1 pt-1">
           <h2 className="font-bold">Bible</h2>
           <Dropdown
@@ -956,7 +956,7 @@ function ControlBar({
   const clock = `${Math.floor(elapsed / 3600)}:${String(Math.floor((elapsed % 3600) / 60)).padStart(2, "0")}:${String(elapsed % 60).padStart(2, "0")}`;
 
   return (
-    <div className="@container flex flex-wrap items-center gap-x-4 gap-y-3 rounded-lg bg-surface px-4 py-3">
+    <div className="@container flex flex-wrap items-center gap-x-4 gap-y-3 card px-4 py-3">
       <label className="flex min-w-0 items-center gap-2.5">
         <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-surface-2 text-muted">
           <Mic size={17} />
@@ -1384,7 +1384,7 @@ function TranscriptStrip({
   }, [segments, partial]);
 
   return (
-    <section className="shrink-0 rounded-lg bg-surface">
+    <section className="shrink-0 card">
       <PanelTitle title="Live transcript" />
       <div ref={box} className="h-24 overflow-y-auto px-4 pb-3 text-[15px] leading-relaxed">
         {segments.length === 0 && !partial.text && (

@@ -615,7 +615,7 @@ function GradientControls({
 
 function Panel({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="space-y-3 rounded-lg bg-surface p-4">
+    <section className="space-y-3 card p-4">
       <h2 className="text-sm font-bold text-muted">{title}</h2>
       {children}
     </section>

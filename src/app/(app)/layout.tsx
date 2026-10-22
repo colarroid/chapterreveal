@@ -8,7 +8,7 @@ export const metadata = { robots: { index: false, follow: false } };
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const m = await requireMembership();
   return (
-    <div className="flex min-h-dvh flex-col">
+    <div className="flex min-h-dvh flex-col bg-[#f7f7f6]">
       <AppHeader churchName={m.churchName} email={m.email} firstName={m.firstName} lastName={m.lastName} />
       {children}
       <UpdateNotice />

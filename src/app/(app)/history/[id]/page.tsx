@@ -76,8 +76,8 @@ export default async function ServicePage({ params }: { params: Promise<{ id: st
         </div>
       </div>
 
-      <div className="mt-8 grid gap-2 lg:grid-cols-[minmax(0,1fr)_18rem]">
-        <section className="rounded-lg bg-surface p-5">
+      <div className="mt-8 grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
+        <section className="card p-5">
           <h2 className="font-bold">Transcript</h2>
           {!segments?.length ? (
             <p className="mt-3 text-muted">No transcript was saved for this service.</p>
@@ -94,7 +94,7 @@ export default async function ServicePage({ params }: { params: Promise<{ id: st
             </div>
           )}
         </section>
-        <aside className="h-fit rounded-lg bg-surface p-5 lg:sticky lg:top-4">
+        <aside className="h-fit card p-5 lg:sticky lg:top-4">
           <h2 className="font-bold">Verses shown</h2>
           <ol className="mt-4 space-y-3 text-sm">
             {((shown ?? []) as Shown[]).map((v) => (

@@ -26,7 +26,7 @@ export default async function HistoryPage() {
       <p className="mt-1 text-sm text-muted">Every service is saved with its full transcript and the verses that went on screen.</p>
 
       {!services?.length ? (
-        <div className="mt-8 flex flex-col items-center rounded-lg bg-surface px-6 py-14 text-center">
+        <div className="mt-8 flex flex-col items-center card px-6 py-14 text-center">
           <span className="grid h-14 w-14 place-items-center rounded-full bg-surface-2 text-muted">
             <CalendarDays size={24} />
           </span>
@@ -34,13 +34,13 @@ export default async function HistoryPage() {
           <p className="mt-0.5 text-sm leading-snug text-muted">They appear here after the first one ends.</p>
         </div>
       ) : (
-        <ul className="mt-6 space-y-1">
+        <ul className="card mt-6 space-y-1 p-2">
           {services.map((s) => {
             const count = (s.verses_shown as unknown as { count: number }[])[0]?.count ?? 0;
             const d = new Date(s.started_at);
             return (
               <li key={s.id}>
-                <Link href={`/history/${s.id}`} className="group flex items-center gap-4 rounded-lg px-3 py-3 transition hover:bg-surface">
+                <Link href={`/history/${s.id}`} className="group flex items-center gap-4 rounded-xl px-3 py-3 transition hover:bg-surface-2">
                   <span className="grid h-12 w-12 shrink-0 place-items-center rounded-md bg-surface-2 text-center leading-none">
                     <span>
                       <span className="block text-[10px] font-bold text-muted uppercase">{d.toLocaleDateString(undefined, { month: "short" })}</span>

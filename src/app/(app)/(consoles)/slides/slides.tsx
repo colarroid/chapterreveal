@@ -362,10 +362,10 @@ export function Slides({
   }, [current]);
 
   return (
-    <div className="flex flex-col gap-2 px-2 pb-2 lg:grid lg:h-[calc(100dvh-4rem)] lg:min-h-[520px] lg:grid-cols-[minmax(0,1fr)_minmax(320px,400px)]">
+    <div className="flex flex-col gap-4 px-4 pb-4 lg:grid lg:h-[calc(100dvh-4rem)] lg:min-h-[520px] lg:grid-cols-[minmax(0,1fr)_minmax(320px,400px)]">
       {/* Preview and screen controls */}
-      <div className="flex min-h-0 flex-col gap-2">
-        <div className="flex flex-wrap items-center gap-2 rounded-lg bg-surface px-4 py-3">
+      <div className="flex min-h-0 flex-col gap-4">
+        <div className="flex flex-wrap items-center gap-2 card px-4 py-3">
           {isLive ? (
             <span className="inline-flex items-center gap-1.5 text-xs font-bold text-negative">
               <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-negative" /> Live
@@ -415,7 +415,7 @@ export function Slides({
         )}
         {error && <Notice tone="error">{error}</Notice>}
 
-        <div className="flex min-h-0 flex-1 flex-col rounded-lg bg-surface p-3">
+        <div className="flex min-h-0 flex-1 flex-col card p-3">
           {current ? (
             <>
               <div className={`overflow-hidden rounded-lg ${onAir === current.id ? "ring-2 ring-negative" : "ring-1 ring-line"}`}>
@@ -485,7 +485,7 @@ export function Slides({
       </div>
 
       {/* The saved slides */}
-      <aside className="flex min-h-[420px] flex-col gap-3 rounded-lg bg-surface p-3 lg:min-h-0">
+      <aside className="flex min-h-[420px] flex-col gap-3 card p-3 lg:min-h-0">
         <div className="flex items-center gap-2 px-1 pt-1">
           <h2 className="font-bold">Slides</h2>
           <span className="text-sm text-faint tabular-nums">{slides.length}</span>

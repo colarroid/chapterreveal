@@ -215,6 +215,17 @@ body {
   will-change: transform;
 }
 
+/* App panels, in the landing page's card style: the grey surface in a
+   white frame with a soft shadow, on the off-white page (#f7f7f6). The frame
+   is a box-shadow, so panels keep their size; gaps between them leave room. */
+@utility card {
+  background-color: var(--surface);
+  border-radius: 1rem;
+  box-shadow:
+    0 0 0 5px var(--bg),
+    0 4px 30px rgba(18, 18, 17, 0.06);
+}
+
 /* The landing page's step icons: a slow float with a slight sway, each
    card a beat behind the last (a negative delay in page.tsx). */
 @keyframes step-float {

@@ -545,10 +545,10 @@ export function Worship({
   const suggested = suggestion && songs ? songs[byId.get(suggestion.id) ?? -1] : null;
 
   return (
-    <div className="flex flex-col gap-2 px-2 pb-2 lg:grid lg:h-[calc(100dvh-4rem)] lg:min-h-[520px] lg:grid-cols-[minmax(0,1fr)_minmax(320px,400px)]">
-      <div className="flex min-h-0 flex-col gap-2">
+    <div className="flex flex-col gap-4 px-4 pb-4 lg:grid lg:h-[calc(100dvh-4rem)] lg:min-h-[520px] lg:grid-cols-[minmax(0,1fr)_minmax(320px,400px)]">
+      <div className="flex min-h-0 flex-col gap-4">
         {/* Controls */}
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-lg bg-surface px-4 py-3">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-3 card px-4 py-3">
           <label className="flex min-w-0 items-center gap-2.5">
             <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-surface-2 text-muted">
               <Mic size={17} />
@@ -614,9 +614,9 @@ export function Worship({
 
         <EndServiceButton live={live} label="End worship" confirmTitle="End worship?" confirmBody="Listening stops. What's on the screen stays until you change it." />
         {/* Always usable by hand: listening only adds following the singing. */}
-        <div className="grid min-h-0 flex-1 gap-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
+        <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
           {/* The song */}
-          <section className="flex min-h-[320px] flex-col overflow-hidden rounded-lg bg-surface lg:min-h-0">
+          <section className="flex min-h-[320px] flex-col overflow-hidden card lg:min-h-0">
             <>
                 <div className="flex h-14 shrink-0 items-center gap-2 px-4">
                   <h2 className="min-w-0 flex-1 truncate font-bold">{currentSong?.title ?? "Song"}</h2>
@@ -692,7 +692,7 @@ export function Worship({
           </section>
 
           {/* On screen */}
-          <section className="flex min-h-0 flex-col rounded-lg bg-surface">
+          <section className="flex min-h-0 flex-col card">
             <div className="flex h-14 shrink-0 items-center gap-3 px-4">
               <h2 className="font-bold">On screen</h2>
               {isLive ? (
@@ -773,7 +773,7 @@ export function Worship({
       {/* Library, or the song form in its place. Outside the start panel, so
           songs can be added and edited before worship starts. */}
       {editing ? (
-        <aside className="flex min-h-[460px] flex-col overflow-hidden rounded-lg bg-surface lg:min-h-0">
+        <aside className="flex min-h-[460px] flex-col overflow-hidden card lg:min-h-0">
           <SongEditor
             key={editing === "new" ? "new" : editing.id}
             initial={editing === "new" ? null : editing}
@@ -783,7 +783,7 @@ export function Worship({
           />
         </aside>
       ) : (
-        <aside className="flex min-h-[460px] flex-col gap-3 rounded-lg bg-surface p-3 lg:min-h-0">
+        <aside className="flex min-h-[460px] flex-col gap-3 card p-3 lg:min-h-0">
           <div className="flex items-center gap-2 px-1 pt-1">
             <h2 className="sr-only">Songs</h2>
             <Dropdown

@@ -7,7 +7,7 @@ export default function Loading() {
       <Skeleton className="h-8 w-40" />
       <div className="mt-6 space-y-2">
         {[3, 4, 3].map((rows, i) => (
-          <section key={i} className="rounded-lg bg-surface p-5 sm:p-6">
+          <section key={i} className="card p-5 sm:p-6">
             <div className="flex items-center gap-3">
               <Skeleton className="h-10 w-10 shrink-0 rounded-full" />
               <div className="flex-1 space-y-2">
