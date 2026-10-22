@@ -27,8 +27,9 @@ export interface Candidate {
   slide: number;
   score: number;
   /**
-   * How many of the words heard the song accounts for, in order. A line
-   * the song shares with others reaches a few; two of its lines, more.
+   * How many different phrases of the song were heard, in order. A line
+   * the song shares with others reaches a few, however often it's sung;
+   * two of its lines, more.
    */
   reach: number;
 }
@@ -174,7 +175,9 @@ export class SongIndex {
     // Every phrase heard that's in a song: where in the words it was heard,
     // which slide it's on, and how much it says (rare phrases say more).
     const hits = new Map<number, Hit[]>();
-    const add = (g: string, weight: number, at: number) => {
+    // `phrase`: the three words by sound, so the same phrase heard as
+    // words and as sounds, or sung twice, counts once towards reach.
+    const add = (g: string, weight: number, at: number, phrase?: string) => {
       const list = this.grams.get(g);
       if (!list) return;
       const idf = weight / Math.log2(2 + list.length);
@@ -183,13 +186,14 @@ export class SongIndex {
         if (opts.only !== undefined && song !== opts.only) continue;
         let h = hits.get(song);
         if (!h) hits.set(song, (h = []));
-        h.push({ at, slide, weight: idf });
+        h.push({ at, slide, weight: idf, phrase });
       }
     };
-    for (let i = 0; i + 2 < w.length; i++) add(`${w[i]} ${w[i + 1]} ${w[i + 2]}`, 1, i + 2);
-    for (let i = 0; i + 1 < w.length; i++) add(`2:${w[i]} ${w[i + 1]}`, 0.35, i + 1);
     const k = w.map(soundKey);
-    for (let i = 0; i + 2 < k.length; i++) add(`s:${k[i]} ${k[i + 1]} ${k[i + 2]}`, 0.6, i + 2);
+    const phraseAt = (i: number) => `${k[i]} ${k[i + 1]} ${k[i + 2]}`;
+    for (let i = 0; i + 2 < w.length; i++) add(`${w[i]} ${w[i + 1]} ${w[i + 2]}`, 1, i + 2, phraseAt(i));
+    for (let i = 0; i + 1 < w.length; i++) add(`2:${w[i]} ${w[i + 1]}`, 0.35, i + 1);
+    for (let i = 0; i + 2 < k.length; i++) add(`s:${phraseAt(i)}`, 0.6, i + 2, phraseAt(i));
     if (!hits.size) return null;
 
     const scored: Candidate[] = [];
@@ -288,7 +292,7 @@ export class SongIndex {
   }
 }
 
-type Hit = { at: number; slide: number; weight: number };
+type Hit = { at: number; slide: number; weight: number; phrase?: string };
 
 /**
  * The best run of phrases through one song: heard in order, each on the
@@ -315,9 +319,9 @@ function bestRun(list: Hit[]): { score: number; slide: number; reach: number } {
       top = { score: best[i], slide: hits[i].slide, at: hits[i].at, end: i };
     }
   }
-  // The words the run covers: each phrase ends on a word heard; a triple
-  // also vouches for the two words before it.
-  const covered = new Set<number>();
-  for (let i = top.end; i >= 0; i = prev[i]) for (let k = 0; k < 3; k++) if (hits[i].at - k >= 0) covered.add(hits[i].at - k);
-  return { score: top.score, slide: top.slide, reach: covered.size };
+  // How much of the song the run heard: its distinct phrases. A line sung
+  // five times is still one line.
+  const phrases = new Set<string>();
+  for (let i = top.end; i >= 0; i = prev[i]) if (hits[i].phrase) phrases.add(hits[i].phrase!);
+  return { score: top.score, slide: top.slide, reach: phrases.size };
 }

@@ -126,3 +126,15 @@ describe("FollowEngine, a wrong song", () => {
     expect(e.follower.lock?.id).toBe("river");
   });
 });
+
+describe("FollowEngine, one line sung over and over", () => {
+  it("doesn't put a song up from a single line, however often it's sung", () => {
+    const e = new FollowEngine();
+    e.library = library;
+    let t = 0;
+    for (const recent of ["i lay my burdens down", "i lay my burdens down i lay my burdens down", "i lay my burdens down i lay my burdens down"]) {
+      t += 3000;
+      expect(e.hear({ recent, final: true, current: null, follow: true, now: t }).show).toBeNull();
+    }
+  });
+});

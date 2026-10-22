@@ -6,14 +6,14 @@
 import { Follower } from "./follow";
 import type { SongIndex } from "./matcher";
 
-/** Finished lines in a row that must point at a new song before it goes up on its own. */
-export const NEW_SONG_LINES = 2;
 /**
- * …and how many of the words heard must be the song's, in its order: more
- * than one line's worth. Songs often share a line (a chorus, "hallelujah,
- * you are worthy"); two different lines of one song rarely belong to another.
+ * Before a new song goes up on its own: finished lines in a row pointing at
+ * it, and different phrases of it heard in order (more than one line's
+ * worth; a line sung again counts once). Songs often share a line (a
+ * chorus, "hallelujah, you are worthy"); two different lines of one song
+ * rarely belong to another.
  */
-export const NEW_SONG_REACH = 10;
+export const NEW_SONG = { lines: 2, reach: 6 };
 /** A song the operator said was wrong isn't put up or suggested again for this long. */
 export const REJECT_MS = 2 * 60_000;
 
@@ -152,7 +152,7 @@ export class FollowEngine {
     // line two songs share never decides, and a wrong song on the big
     // screen is worse than a line's wait.
     if (current?.id !== chosen.id) {
-      const sure = this.newSong.id === chosen.id && this.newSong.lines >= NEW_SONG_LINES && (chosen.reach ?? 0) >= NEW_SONG_REACH;
+      const sure = this.newSong.id === chosen.id && this.newSong.lines >= NEW_SONG.lines && (chosen.reach ?? 0) >= NEW_SONG.reach;
       if (!sure) {
         return out("suggest", [{ id: chosen.id, slide: chosen.slide, score: chosen.score }, ...others.filter((c) => c.id !== chosen.id)].slice(0, 3));
       }
