@@ -208,6 +208,13 @@ export function Worship({
   const currentRef = useRef(current);
   const [isLive, setIsLive] = useState(false);
   const liveRef = useRef(false);
+  // Esc: the lyrics come off, the background and Live stay (Enter brings them back).
+  const [cleared, setCleared] = useState(false);
+  const clearedRef = useRef(false);
+  const markCleared = useCallback((on: boolean) => {
+    clearedRef.current = on;
+    setCleared(on);
+  }, []);
   const screen = useRef<ScreenSender | null>(null);
   // Words changed for this service only (a choir that sings it differently).
   // Kept in memory, never saved: reloading or ending worship drops them.
@@ -283,7 +290,7 @@ export function Worship({
     shownDisplay.current = display;
     const cur = currentRef.current;
     const song = cur ? songById(cur.id) : null;
-    if (liveRef.current && song && cur) void screen.current.show(toSlide(song, cur.slide));
+    if (liveRef.current && song && cur) void (clearedRef.current ? screen.current.clearWords("song") : screen.current.show(toSlide(song, cur.slide)));
   }, [display, token, songById]);
   const [outputUrl, setOutputUrl] = useState("");
   useEffect(() => setOutputUrl(token ? `${location.origin}/screen/${token}` : ""), [token]);
@@ -308,19 +315,28 @@ export function Worship({
     const song = songById(id);
     if (!song) return;
     const i = Math.max(0, Math.min(slide, song.slides.length - 1));
-    if (liveRef.current) void screen.current?.show(toSlide(song, i));
+    if (liveRef.current) {
+      void screen.current?.show(toSlide(song, i));
+      markCleared(false);
+    }
     const next = { id, slide: i };
     currentRef.current = next;
     setCurrent(next);
-  }, [songById]);
+  }, [songById, markCleared]);
 
   const goLive = useCallback((on: boolean) => {
     liveRef.current = on;
     setIsLive(on);
+    markCleared(false);
     const cur = currentRef.current;
     const song = cur ? songById(cur.id) : null;
     void screen.current?.show(on && song && cur ? toSlide(song, cur.slide) : null);
-  }, [songById]);
+  }, [songById, markCleared]);
+  const clear = useCallback(() => {
+    if (!liveRef.current) return;
+    void screen.current?.clearWords("song");
+    markCleared(true);
+  }, [markCleared]);
 
   const step = useCallback(
     (dir: 1 | -1) => {
@@ -447,12 +463,16 @@ export function Worship({
         e.preventDefault();
         step(-1);
       } else if (e.key === "l" || e.key === "L") goLive(!liveRef.current);
-      else if (e.key === "Escape") goLive(false);
+      else if (e.key === "Escape") clear();
+      else if (e.key === "Enter" && clearedRef.current && currentRef.current) {
+        e.preventDefault();
+        putUp(currentRef.current.id, currentRef.current.slide);
+      }
       else if (e.key === "a" || e.key === "A") setAuto((v) => !v);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [active, step, goLive]);
+  }, [active, step, goLive, clear, putUp]);
 
   // ---- Library and editing --------------------------------------------------
   const [query, setQuery] = useState("");
@@ -541,7 +561,7 @@ export function Worship({
     router.refresh();
   }
 
-  const onAir = isLive ? selectedSlide : null;
+  const onAir = isLive && !cleared ? selectedSlide : null;
   const suggested = suggestion && songs ? songs[byId.get(suggestion.id) ?? -1] : null;
 
   return (
@@ -698,6 +718,7 @@ export function Worship({
               {isLive ? (
                 <span className="inline-flex items-center gap-1.5 text-xs font-bold text-negative">
                   <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-negative" /> Live
+                  {cleared && <span className="font-semibold text-faint">· words cleared, Enter to show</span>}
                 </span>
               ) : (
                 <span className="text-xs font-bold text-faint">Not live · screen blank</span>

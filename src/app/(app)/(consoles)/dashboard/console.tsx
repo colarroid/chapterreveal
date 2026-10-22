@@ -81,12 +81,20 @@ export function Console({ churchId, userId, screenToken, translationId, translat
   const [selection, setSelection] = useState<Selection | null>(null);
   // Live: whether selections go to the screen. Off, the screen is blank and
   // selecting a verse only previews it here. Starts off, so nothing reaches the
-  // screen until the operator chooses. L toggles it, Esc turns it off.
+  // screen until the operator chooses. L toggles it.
   const [isLive, setIsLive] = useState(false);
   const liveRef = useRef(false);
+  // Esc: the words come off the screen, the background stays and Live stays
+  // on, so the next verse goes straight up.
+  const [cleared, setCleared] = useState(false);
+  const clearedRef = useRef(false);
+  const markCleared = useCallback((on: boolean) => {
+    clearedRef.current = on;
+    setCleared(on);
+  }, []);
   const selectionRef = useRef<Selection | null>(null);
   const selectedSlide = selection ? (selection.slides[selection.index] ?? null) : null;
-  const onAir = isLive ? selectedSlide : null;
+  const onAir = isLive && !cleared ? selectedSlide : null;
   const [query, setQuery] = useState("");
   const searchBox = useRef<HTMLInputElement>(null);
   const screen = useRef<ScreenSender | null>(null);
@@ -212,7 +220,7 @@ export function Console({ churchId, userId, screenToken, translationId, translat
     shownDisplay.current = display;
     const sel = selectionRef.current;
     const slide = sel?.slides[sel.index];
-    if (liveRef.current && slide) void screen.current.show(slide);
+    if (liveRef.current && slide) void (clearedRef.current ? screen.current.clearWords() : screen.current.show(slide));
   }, [display, token]);
 
   // ---- Present on projector -----------------------------------------------
@@ -279,6 +287,7 @@ export function Console({ churchId, userId, screenToken, translationId, translat
       if (liveRef.current) {
         // The screen first: the broadcast leaves before React re-renders here.
         void screen.current?.show(slide);
+        markCleared(false);
         shownRef.current = { key: refKey(sel.ref), ref: sel.ref };
         logShown(slide, sel.ref, source, s);
       }
@@ -287,7 +296,7 @@ export function Console({ churchId, userId, screenToken, translationId, translat
       // Follow-ups like "verse 17" now mean this chapter.
       live.ctxRef.current = { book: sel.ref.book, chapter: sel.ref.chapter };
     },
-    [logShown, live.ctxRef],
+    [logShown, live.ctxRef, markCleared],
   );
 
   const showRef = useCallback(
@@ -332,6 +341,7 @@ export function Console({ churchId, userId, screenToken, translationId, translat
     (on: boolean) => {
       liveRef.current = on;
       setIsLive(on);
+      markCleared(false);
       if (!on) {
         void screen.current?.show(null);
         shownRef.current = null;
@@ -346,9 +356,14 @@ export function Console({ churchId, userId, screenToken, translationId, translat
         logShown(slide, sel.ref, "step");
       }
     },
-    [logShown],
+    [logShown, markCleared],
   );
-  const clear = useCallback(() => goLive(false), [goLive]);
+  const clear = useCallback(() => {
+    if (!liveRef.current) return;
+    void screen.current?.clearWords();
+    shownRef.current = null;
+    markCleared(true);
+  }, [markCleared]);
 
   // Switching translation redraws what's selected in the new wording, and
   // updates the screen when live.
@@ -358,7 +373,13 @@ export function Console({ churchId, userId, screenToken, translationId, translat
     // A Deuterocanonical book the new Bible doesn't have: what's showing stays.
     if (!bible.books[sel.ref.book]?.length) return;
     const slides = buildSlides(bible, sel.ref);
-    if (slides.length) putUp({ ref: sel.ref, slides, index: Math.min(sel.index, slides.length - 1) }, "step");
+    if (!slides.length) return;
+    const next = { ref: sel.ref, slides, index: Math.min(sel.index, slides.length - 1) };
+    // Words cleared: the new wording waits here, off the screen.
+    if (clearedRef.current) {
+      selectionRef.current = next;
+      setSelection(next);
+    } else putUp(next, "step");
   }, [bible, putUp]);
 
   // ---- Chapter list and verse jumps ----------------------------------------
@@ -580,6 +601,10 @@ export function Console({ churchId, userId, screenToken, translationId, translat
       if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key === "l" || e.key === "L") {
         goLive(!liveRef.current);
+      } else if (e.key === "Enter" && clearedRef.current && selectionRef.current) {
+        // Words cleared: Enter puts the same verse back up.
+        e.preventDefault();
+        putUp(selectionRef.current, "step");
       } else if (/^[0-9]$/.test(e.key)) {
         typeDigit(e.key);
       } else if (e.key === "ArrowRight" || e.key === "ArrowDown") {
@@ -597,7 +622,7 @@ export function Console({ churchId, userId, screenToken, translationId, translat
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [active, clear, step, showRef, live.suggestions, goLive, typeDigit]);
+  }, [active, clear, step, showRef, live.suggestions, goLive, typeDigit, putUp]);
 
   // ---- Render -------------------------------------------------------------
 
@@ -680,6 +705,7 @@ export function Console({ churchId, userId, screenToken, translationId, translat
               {isLive ? (
                 <span className="inline-flex items-center gap-1.5 text-xs font-bold whitespace-nowrap text-negative">
                   <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-negative" /> Live
+                  {cleared && <span className="font-semibold text-faint">· words cleared, Enter to show</span>}
                 </span>
               ) : (
                 <span className="min-w-0 truncate text-xs font-bold text-faint">Not live · screen blank</span>
@@ -690,7 +716,7 @@ export function Console({ churchId, userId, screenToken, translationId, translat
                   role="switch"
                   aria-checked={isLive}
                   onClick={() => goLive(!isLive)}
-                  title={isLive ? "Live: selected verses go to the screen. Press L or Esc to blank it." : "Not live: verses only preview here. Press L to go live."}
+                  title={isLive ? "Live: selected verses go to the screen. Esc clears the words and keeps the background; L blanks the screen." : "Not live: verses only preview here. Press L to go live."}
                   className="inline-flex h-9 items-center gap-2 rounded-full bg-surface-2 pr-2 pl-3 text-sm font-semibold transition hover:bg-surface-3 active:scale-[0.97]"
                 >
                   Live

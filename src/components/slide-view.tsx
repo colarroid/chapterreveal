@@ -73,6 +73,7 @@ export const SlideView = memo(function SlideView({
   slide,
   layout = "full",
   visible = true,
+  showWords = true,
   theme,
   chroma,
   muted = false,
@@ -81,6 +82,8 @@ export const SlideView = memo(function SlideView({
   slide: Slide | null;
   layout?: SlideLayout;
   visible?: boolean;
+  /** Off: the words are cleared but the background stays up. */
+  showWords?: boolean;
   /** Overrides the slide's own theme (the console preview, the theme editor). */
   theme?: DisplayTheme;
   /**
@@ -102,6 +105,8 @@ export const SlideView = memo(function SlideView({
   const chars = slide ? slide.lines.reduce((n, l) => n + l.text.length, 0) : 0;
   const many = (slide?.lines.length ?? 0) > 1;
   const on = visible && !!slide;
+  // The words, which can go while the background stays.
+  const text = on && showWords && (slide?.lines.length ?? 0) > 0;
 
   // The lower third keeps its own look: white words on a dark band (or, on
   // green, on nothing).
@@ -279,7 +284,7 @@ export const SlideView = memo(function SlideView({
         )}
         <div
           ref={box}
-          className={`relative flex h-full w-full flex-col ${place} overflow-hidden px-[3cqw] py-[6cqh] ${alignText} transition-opacity duration-150 ${on ? "opacity-100" : "opacity-0"}`}
+          className={`relative flex h-full w-full flex-col ${place} overflow-hidden px-[3cqw] py-[6cqh] ${alignText} transition-opacity duration-150 ${text ? "opacity-100" : "opacity-0"}`}
           style={{ color: textColor }}
         >
           {body}
@@ -301,7 +306,7 @@ export const SlideView = memo(function SlideView({
     return (
       <div data-slide-root className="relative h-full w-full overflow-hidden [container-type:inline-size]" style={chroma ? { background: chroma } : undefined}>
         <div
-          className={`absolute inset-x-0 ${top ? "top-0 pt-[3.2cqw]" : "bottom-0 pb-[3.2cqw]"} ${band} ${alignText} px-[6cqw] transition-opacity duration-150 ${on ? "opacity-100" : "opacity-0"}`}
+          className={`absolute inset-x-0 ${top ? "top-0 pt-[3.2cqw]" : "bottom-0 pb-[3.2cqw]"} ${band} ${alignText} px-[6cqw] transition-opacity duration-150 ${text ? "opacity-100" : "opacity-0"}`}
           style={{ color: textColor }}
         >
           {/* The text box: its width (of the space between the margins) and
@@ -321,10 +326,11 @@ export const SlideView = memo(function SlideView({
   const justify = t.position === "top" ? "justify-start" : t.position === "bottom" ? "justify-end" : "justify-center";
   return (
     // Blank (Live off, or nothing up) is plain black, background and all.
+    // Words cleared: the background stays and only the words fade.
     <div className="relative h-full w-full overflow-hidden bg-black [container-type:inline-size]" style={chroma ? { background: chroma } : undefined}>
       <div className={`absolute inset-0 transition-opacity duration-200 ${on ? "opacity-100" : "opacity-0"}`}>
         {!chroma && <Backdrop background={t.background} dim={t.dim} />}
-        <div className={`absolute inset-0 flex flex-col px-[7cqw] py-[5cqw] ${justify} ${t.align === "left" ? "items-start text-left" : "items-center text-center"}`}>
+        <div className={`absolute inset-0 flex flex-col px-[7cqw] py-[5cqw] ${justify} transition-opacity duration-300 ${text ? "opacity-100" : "opacity-0"} ${t.align === "left" ? "items-start text-left" : "items-center text-center"}`}>
           <div className="max-w-[86cqw]" style={{ color: textColor }}>
             {body}
           </div>

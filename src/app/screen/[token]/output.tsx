@@ -44,6 +44,8 @@ export function OutputScreen({
 }) {
   const [slide, setSlide] = useState<Slide | null>(null);
   const [visible, setVisible] = useState(false);
+  // Off when the console cleared the words but kept the background.
+  const [words, setWords] = useState(true);
   const [lost, setLost] = useState(false);
   const [replaced, setReplaced] = useState(false);
   const latest = useRef(0);
@@ -121,7 +123,12 @@ export function OutputScreen({
         // Pictures only from this app's own storage, like backgrounds.
         const image = (p.slide.kind === "image" || p.slide.kind === "video") && isOwnMedia(p.slide.image) ? p.slide.image : undefined;
         const images = p.slide.kind === "image" && Array.isArray(p.slide.images) ? p.slide.images.filter((u) => isOwnMedia(u)).slice(0, 6) : undefined;
-        setSlide({ ...p.slide, image, images, theme: cleanTheme(p.slide.theme, base) });
+        const next = { ...p.slide, image, images, theme: cleanTheme(p.slide.theme, base) };
+        const bare = !next.lines?.length && !image;
+        // Words cleared, background kept: the old words stay underneath so
+        // they can fade out, drawn in the new look.
+        setSlide((prev) => (bare && prev?.lines.length && (prev.kind === "song") === (next.kind === "song") ? { ...prev, theme: next.theme } : next));
+        setWords(!bare);
         setVisible(true);
       } else {
         // Keep the old text so it can fade out.
@@ -183,6 +190,7 @@ export function OutputScreen({
         slide={slide}
         layout={online ? (slide?.kind === "song" ? "lower" : "full") : layout}
         visible={visible}
+        showWords={words}
         chroma={online ? CHROMA_GREEN : chroma}
         look={look}
       />

@@ -98,6 +98,16 @@ export class ScreenSender {
     return payload;
   }
 
+  /**
+   * Takes the words off and leaves the background up (picture, video, colour
+   * or gradient), unlike show(null), which blanks the screen. Sent as a slide
+   * with no lines, so an output page from before this change shows just the
+   * background too.
+   */
+  clearWords(kind?: "song"): Promise<ScreenPayload> {
+    return this.show({ label: "", lines: [], translation: "", kind });
+  }
+
   close() {
     window.removeEventListener("online", this.onOnline);
     this.local?.close();
