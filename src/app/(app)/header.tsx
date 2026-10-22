@@ -9,6 +9,7 @@ import { ThemeToggle } from "@/components/theme";
 import { Logo } from "@/components/ui";
 import { forgetBibleKey } from "@/lib/scripture/bible-crypto";
 import { forgetSongs } from "@/lib/songs/store";
+import { LOCKED_THEME } from "@/lib/theme-script";
 import { isConsolePath } from "./(consoles)/active";
 import { GlidingPill } from "@/components/motion";
 import { supabaseBrowser } from "@/lib/supabase/client";
@@ -122,11 +123,14 @@ function AccountMenu({ person, churchName }: { person: Person; churchName: strin
               <Icon size={17} className="text-muted" /> {label}
             </Link>
           ))}
-          <div className="flex h-10 items-center gap-3 rounded-lg px-3 text-[15px]">
-            <SunMoon size={17} className="text-muted" />
-            <span className="flex-1">Theme</span>
-            <ThemeToggle />
-          </div>
+          {/* Hidden while the app is locked to one theme (LOCKED_THEME). */}
+          {!LOCKED_THEME && (
+            <div className="flex h-10 items-center gap-3 rounded-lg px-3 text-[15px]">
+              <SunMoon size={17} className="text-muted" />
+              <span className="flex-1">Theme</span>
+              <ThemeToggle />
+            </div>
+          )}
           <div className="my-1 h-px bg-line" />
           <button
             type="button"
