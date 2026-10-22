@@ -26,6 +26,11 @@ export interface Candidate {
   song: number;
   slide: number;
   score: number;
+  /**
+   * How many of the words heard the song accounts for, in order. A line
+   * the song shares with others reaches a few; two of its lines, more.
+   */
+  reach: number;
 }
 
 export interface SongMatch extends Candidate {
@@ -105,7 +110,7 @@ export class SongIndex {
   /** Per song, per slide: the slides with the same words (a chorus sung again). */
   private twins: number[][][];
   /** Each song's distinct words, to tell when two songs are copies of each other. */
-  private bags: Set<string>[];
+  private phrases: Set<string>[];
 
   constructor(songs: IndexedSong[]) {
     this.songs = songs;
@@ -118,7 +123,12 @@ export class SongIndex {
       if (k === undefined) sounds.set(w, (k = soundKey(w)));
       return k;
     };
-    this.bags = slideWords.map((slides) => new Set(slides.flat()));
+    this.phrases = slideWords.map((slides) => {
+      const w = slides.flat();
+      const set = new Set<string>();
+      for (let i = 0; i + 2 < w.length; i++) set.add(`${w[i]} ${w[i + 1]} ${w[i + 2]}`);
+      return set;
+    });
     this.twins = slideWords.map((slides) => {
       const byText = new Map<string, number[]>();
       const keys = slides.map((w, i) => {
@@ -195,10 +205,10 @@ export class SongIndex {
         const ahead = slide - current.slide;
         if (ahead === 0 || ahead === 1) s *= 1.25;
         // A weaker match is enough to move within the song on screen.
-        if (slide >= current.slide - 1 && slide <= current.slide + 3) inCurrent = { song, slide, score: s };
+        if (slide >= current.slide - 1 && slide <= current.slide + 3) inCurrent = { song, slide, score: s, reach: run.reach };
       }
       s *= Math.min(1.35, Math.max(1, opts.prior?.(song) ?? 1));
-      scored.push({ song, slide, score: s });
+      scored.push({ song, slide, score: s, reach: run.reach });
     }
     scored.sort((a, b) => b.score - a.score);
     const round = (c: Candidate): Candidate => ({ ...c, score: Math.round(c.score * 100) / 100 });
@@ -226,17 +236,22 @@ export class SongIndex {
     return { ...round(best), confident: false, candidates };
   }
 
-  /** Whether two songs are copies: most of the smaller one's words are in the other. */
+  /**
+   * Whether two songs are copies: most of the smaller one's phrases (three
+   * words in a row) are in the other. Phrases, not words: worship songs
+   * share most of their words ("Lord", "holy", "worthy"), and two different
+   * songs with the same chorus must stay rivals, or one goes up as if sure.
+   */
   private copies(a: number, b: number): boolean {
     if (a === b) return true;
-    const [x, y] = [this.bags[a], this.bags[b]];
+    const [x, y] = [this.phrases[a], this.phrases[b]];
     if (!x?.size || !y?.size) return false;
     const [small, big] = x.size <= y.size ? [x, y] : [y, x];
     // Very different sizes: one is a medley or a fragment, not a copy.
     if (small.size < big.size * 0.5) return false;
     let both = 0;
     for (const w of small) if (big.has(w)) both++;
-    return both / small.size >= 0.75;
+    return both / small.size >= 0.7;
   }
 
   /** Of a slide and its twins (the same words again), the one nearest ahead of `from`. */
@@ -280,21 +295,29 @@ type Hit = { at: number; slide: number; weight: number };
  * same slide as the one before or a slide or two further on. Returns its
  * score and the slide it ends on (where the singer is now).
  */
-function bestRun(list: Hit[]): { score: number; slide: number } {
+function bestRun(list: Hit[]): { score: number; slide: number; reach: number } {
   const hits = [...list].sort((a, b) => a.at - b.at);
   const best = new Array<number>(hits.length);
-  let top = { score: 0, slide: 0, at: -1 };
+  const prev = new Array<number>(hits.length).fill(-1);
+  let top = { score: 0, slide: 0, at: -1, end: -1 };
   for (let i = 0; i < hits.length; i++) {
     let before = 0;
     for (let j = 0; j < i; j++) {
       const step = hits[i].slide - hits[j].slide;
-      if (step >= 0 && step <= 2 && best[j] > before) before = best[j];
+      if (step >= 0 && step <= 2 && best[j] > before) {
+        before = best[j];
+        prev[i] = j;
+      }
     }
     best[i] = hits[i].weight + before;
     // The highest run wins; between equal runs, the one heard last.
     if (best[i] > top.score + 1e-9 || (Math.abs(best[i] - top.score) < 1e-9 && hits[i].at >= top.at)) {
-      top = { score: best[i], slide: hits[i].slide, at: hits[i].at };
+      top = { score: best[i], slide: hits[i].slide, at: hits[i].at, end: i };
     }
   }
-  return top;
+  // The words the run covers: each phrase ends on a word heard; a triple
+  // also vouches for the two words before it.
+  const covered = new Set<number>();
+  for (let i = top.end; i >= 0; i = prev[i]) for (let k = 0; k < 3; k++) if (hits[i].at - k >= 0) covered.add(hits[i].at - k);
+  return { score: top.score, slide: top.slide, reach: covered.size };
 }

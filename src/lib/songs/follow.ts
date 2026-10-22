@@ -18,6 +18,8 @@ export interface Pick {
   slide: number;
   score: number;
   confident: boolean;
+  /** Words heard that the song accounts for, in order (see Candidate.reach). */
+  reach?: number;
 }
 
 /** Another song heard this long (while the locked one isn't) and it takes over. */

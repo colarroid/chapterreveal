@@ -402,6 +402,20 @@ export function Worship({
     markCleared(true);
   }, [markCleared]);
 
+  // Wrong song (W): off the screen (the background stays), no longer
+  // followed, and not put up or suggested again for a couple of minutes.
+  const rejectSong = useCallback(() => {
+    const cur = currentRef.current;
+    if (!cur) return;
+    engine.current.reject(cur.id);
+    logDetection.current?.({ kind: "shown", decision: "rejected", song_id: cur.id, slide: cur.slide, current_song_id: cur.id, current_slide: cur.slide });
+    clear();
+    currentRef.current = null;
+    setCurrent(null);
+    setSuggestions([]);
+    syncLock.current?.();
+  }, [clear]);
+
   const step = useCallback(
     (dir: 1 | -1) => {
       const cur = currentRef.current;
@@ -562,10 +576,11 @@ export function Worship({
       }
       else if (e.key === "a" || e.key === "A") setAuto((v) => !v);
       else if (e.key === "k" || e.key === "K") toggleLock();
+      else if ((e.key === "w" || e.key === "W") && currentRef.current) rejectSong();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [active, step, goLive, clear, putUp, toggleLive, toggleLock]);
+  }, [active, step, goLive, clear, putUp, toggleLive, toggleLock, rejectSong]);
 
   // ---- Library and editing --------------------------------------------------
   const [query, setQuery] = useState("");
@@ -771,6 +786,17 @@ export function Worship({
                         </button>
                       );
                     })()}
+                  {/* Only while it's on the screen: that's when a wrong song matters. */}
+                  {currentSong && onAir && (
+                    <button
+                      type="button"
+                      onClick={rejectSong}
+                      title="Wrong song: take it off the screen and stop following it (W)"
+                      className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full bg-surface-2 px-3 text-xs font-bold text-muted transition hover:bg-negative/10 hover:text-negative active:scale-[0.97]"
+                    >
+                      <X size={13} /> Wrong song
+                    </button>
+                  )}
                   {currentSong && !currentSong.shared && (
                     <>
                       <IconButton label="Edit song" onClick={() => setEditing(currentSong)}>

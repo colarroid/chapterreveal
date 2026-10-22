@@ -44,17 +44,22 @@ const TEAM_LAG_MS = 6000;
 
 /**
  * What the team had on screen over time: every slide shown, except
- * automatic ones the operator replaced within a few seconds.
+ * automatic ones the operator replaced within a few seconds, and songs the
+ * operator marked wrong (from then, nothing: id "").
  */
 function truth(events: LoggedEvent[]): { at: number; id: string; slide: number }[] {
   const shown = events.filter((e) => e.kind === "shown" && e.song_id).map((e) => ({ ...e, t: Date.parse(e.at) }));
   return shown
     .filter((e, i) => {
       if (e.decision !== "auto" && e.decision !== "early") return true;
-      const fix = shown.slice(i + 1).find((n) => n.t - e.t <= CORRECTED_MS && (n.decision === "operator" || n.decision === "suggestion"));
+      const later = shown.slice(i + 1);
+      // Marked wrong before another song of its own went up: a mistake.
+      const wrong = later.find((n) => n.song_id === e.song_id && (n.decision === "rejected" || n.decision === "operator" || n.decision === "suggestion"));
+      if (wrong?.decision === "rejected") return false;
+      const fix = later.find((n) => n.t - e.t <= CORRECTED_MS && (n.decision === "operator" || n.decision === "suggestion"));
       return !fix || fix.song_id === e.song_id;
     })
-    .map((e) => ({ at: e.t, id: e.song_id!, slide: e.slide ?? 0 }));
+    .map((e) => ({ at: e.t, id: e.decision === "rejected" ? "" : e.song_id!, slide: e.slide ?? 0 }));
 }
 
 export function replay(library: SongIndex, events: LoggedEvent[], usage?: Map<string, number>): ReplayReport {
@@ -67,8 +72,9 @@ export function replay(library: SongIndex, events: LoggedEvent[], usage?: Map<st
   const teamAt = (t: number) => {
     let now: (typeof team)[number] | null = null;
     for (const e of team) if (e.at <= t) now = e;
-    const soon = team.find((e) => e.at > t && e.at - t <= TEAM_LAG_MS);
-    return soon && soon.id !== now?.id ? soon : now;
+    const soon = team.find((e) => e.at > t && e.at - t <= TEAM_LAG_MS && e.id);
+    const pick = soon && soon.id !== now?.id ? soon : now;
+    return pick?.id ? pick : null;
   };
 
   const report: ReplayReport = { lines: 0, checked: 0, sameSong: 0, sameSlide: 0, autoShows: 0, wrongShows: 0, offered: 0, offeredRight: 0, found: [] };

@@ -21,6 +21,12 @@ const library = new SongIndex([
       { label: "Chorus", text: "I love you Lord\nI lift my voice to you" },
     ],
   },
+  {
+    // Starts with River of Mercy's first line, then goes its own way.
+    id: "valley",
+    title: "Valley Song",
+    slides: [{ text: "Down by the river of mercy\nThe willows bend and sway" }, { text: "Silver water singing\nAll along the way" }],
+  },
 ]);
 
 function engine() {
@@ -31,9 +37,22 @@ function engine() {
 const heard = (recent: string, more: Partial<Heard> = {}): Heard => ({ recent, final: true, current: null, follow: true, now: 0, ...more });
 
 describe("FollowEngine", () => {
-  it("puts a clearly sung song up", () => {
-    const o = engine().hear(heard("down by the river of mercy i lay my burdens down"));
-    expect(o).toMatchObject({ decision: "auto", show: { id: "river", slide: 0, how: "auto" } });
+  it("puts a song up once two of its lines have been sung", () => {
+    const e = engine();
+    const one = e.hear(heard("i lay my burdens down every morning brand new", { now: 0 }));
+    expect(one.show).toBeNull();
+    expect(one.suggestions[0]?.id).toBe("river");
+    const two = e.hear(heard("i lay my burdens down every morning brand new your kindness follows me", { now: 3000 }));
+    expect(two).toMatchObject({ decision: "auto", show: { id: "river", slide: 1, how: "auto" } });
+  });
+
+  it("never puts a song up from a line another song shares", () => {
+    const e = engine();
+    // Sung twice, even: it's in River of Mercy and Valley Song alike.
+    e.hear(heard("down by the river of mercy", { now: 0 }));
+    const o = e.hear(heard("down by the river of mercy down by the river of mercy", { now: 3000 }));
+    expect(o.show).toBeNull();
+    expect(o.suggestions.map((s) => s.id).sort()).toEqual(["river", "valley"]);
   });
 
   it("only suggests while Follow is off", () => {
@@ -67,12 +86,12 @@ describe("FollowEngine", () => {
     expect(after.show).toBeNull();
   });
 
-  it("waits for a half-heard phrase to settle before moving", () => {
+  it("within a song, waits for a half-heard phrase to settle before moving", () => {
     const e = engine();
-    const first = e.hear(heard("down by the river of mercy i lay my", { final: false }));
-    expect(first.show).toBeNull();
-    const again = e.hear(heard("down by the river of mercy i lay my burdens", { final: false }));
-    expect(again.show).toMatchObject({ id: "river", slide: 0 });
+    e.shown("river", null, 0);
+    const at = { current: { id: "river", slide: 0 }, final: false, now: 1000 };
+    expect(e.hear(heard("every morning brand new your", at)).show).toBeNull();
+    expect(e.hear(heard("every morning brand new your kindness", { ...at, now: 1200 })).show).toMatchObject({ id: "river", slide: 1 });
   });
 
   it("keeps songs outside the playlist to suggestions", () => {
@@ -81,5 +100,29 @@ describe("FollowEngine", () => {
     const o = e.hear(heard("down by the river of mercy i lay my burdens down"));
     expect(o.show).toBeNull();
     expect(o.suggestions[0]?.id).toBe("river");
+  });
+});
+
+describe("FollowEngine, a wrong song", () => {
+  it("is let go of, and not put up or suggested again for a while", () => {
+    const e = new FollowEngine();
+    e.library = library;
+    e.shown("river", null, 0);
+    e.reject("river", 1000);
+    expect(e.follower.lock).toBeNull();
+    const line = "i lay my burdens down every morning brand new your kindness follows me";
+    for (const now of [2000, 5000, 8000]) {
+      const o = e.hear({ recent: line, final: true, current: null, follow: true, now });
+      expect(o.show).toBeNull();
+      expect(o.suggestions.some((s) => s.id === "river")).toBe(false);
+    }
+  });
+
+  it("comes back if the operator picks it after all", () => {
+    const e = new FollowEngine();
+    e.library = library;
+    e.reject("river", 0);
+    e.shown("river", null, 1000);
+    expect(e.follower.lock?.id).toBe("river");
   });
 });

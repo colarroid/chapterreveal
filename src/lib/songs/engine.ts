@@ -4,12 +4,18 @@
 // replays a service's log through it, so both always decide the same way.
 
 import { Follower } from "./follow";
-import { CONFIDENT, type SongIndex } from "./matcher";
+import type { SongIndex } from "./matcher";
 
 /** Finished lines in a row that must point at a new song before it goes up on its own. */
 export const NEW_SONG_LINES = 2;
-/** …unless it scores this many times the confident bar on one line. */
-export const CLEAR_AT_ONCE = 2;
+/**
+ * …and how many of the words heard must be the song's, in its order: more
+ * than one line's worth. Songs often share a line (a chorus, "hallelujah,
+ * you are worthy"); two different lines of one song rarely belong to another.
+ */
+export const NEW_SONG_REACH = 10;
+/** A song the operator said was wrong isn't put up or suggested again for this long. */
+export const REJECT_MS = 2 * 60_000;
 
 /** A song detection thinks it could be, at the slide it's up to. */
 export interface Suggested {
@@ -55,6 +61,8 @@ export class FollowEngine {
   usage = new Map<string, number>();
   private lastKey = "";
   private newSong = { id: "", lines: 0 };
+  /** Songs the operator said were wrong, until when. */
+  private rejected = new Map<string, number>();
   private positions = new WeakMap<SongIndex, Map<string, number>>();
 
   private pos(idx: SongIndex, id: string): number {
@@ -63,8 +71,21 @@ export class FollowEngine {
     return m.get(id) ?? -1;
   }
 
+  /**
+   * The operator says the song on screen is the wrong one: stop following
+   * it, and don't put it up or suggest it again for a while (unless they
+   * pick it themselves).
+   */
+  reject(id: string, now = Date.now()) {
+    this.rejected.set(id, now + REJECT_MS);
+    if (this.follower.lock?.id === id) this.follower.unlock();
+    this.newSong = { id: "", lines: 0 };
+  }
+
   /** A slide went on screen (by any route): a new song is followed from now on. */
   shown(id: string, before: { id: string } | null, now = Date.now()) {
+    // Picked by hand after all: the operator knows best.
+    this.rejected.delete(id);
     if (before?.id !== id) this.follower.lockTo(id, false, now);
   }
 
@@ -92,7 +113,18 @@ export class FollowEngine {
       const all = pick(this.library);
       if (all && (!m || all.score > m.score)) m = inSet ? { ...all, confident: false } : all;
     }
-    const chosen = f.choose(locked, m, now);
+    // Songs the operator turned down are out of the running for now.
+    const turnedDown = (id: string) => (this.rejected.get(id) ?? 0) > now;
+    if (m && turnedDown(m.id)) m = { ...m, confident: false };
+    if (m) m = { ...m, candidates: m.candidates.filter((c) => !turnedDown(c.id)) };
+    const chosen0 = f.choose(locked, m, now);
+    const chosen = chosen0 && turnedDown(chosen0.id) ? null : chosen0;
+    // Finished lines in a row that pointed at a song other than the one up,
+    // counted from the first (even while it was only a suggestion).
+    if (final) {
+      const lead = m && m.id !== current?.id ? m.id : "";
+      this.newSong = !lead ? { id: "", lines: 0 } : this.newSong.id === lead ? { id: lead, lines: this.newSong.lines + 1 } : { id: lead, lines: 1 };
+    }
     const base = {
       candidates: m?.candidates ?? [],
       chosen: chosen ? { id: chosen.id, slide: chosen.slide } : null,
@@ -115,16 +147,16 @@ export class FollowEngine {
     const key = `${chosen.id}:${chosen.slide}`;
     const settled = final || this.lastKey === key;
     this.lastKey = key;
-    // A different song needs two finished lines in a row pointing at it
-    // (or one overwhelmingly clear one) before it goes up on its own: a
-    // wrong song on the big screen is worse than a line's wait.
+    // A different song needs two finished lines in a row pointing at it,
+    // covering more than one line of it, before it goes up on its own: a
+    // line two songs share never decides, and a wrong song on the big
+    // screen is worse than a line's wait.
     if (current?.id !== chosen.id) {
-      if (final) this.newSong = this.newSong.id === chosen.id ? { id: chosen.id, lines: this.newSong.lines + 1 } : { id: chosen.id, lines: 1 };
-      const sure = this.newSong.id === chosen.id && this.newSong.lines >= NEW_SONG_LINES;
-      if (!sure && chosen.score < CONFIDENT.score * CLEAR_AT_ONCE) {
+      const sure = this.newSong.id === chosen.id && this.newSong.lines >= NEW_SONG_LINES && (chosen.reach ?? 0) >= NEW_SONG_REACH;
+      if (!sure) {
         return out("suggest", [{ id: chosen.id, slide: chosen.slide, score: chosen.score }, ...others.filter((c) => c.id !== chosen.id)].slice(0, 3));
       }
-    } else if (final) this.newSong = { id: "", lines: 0 };
+    }
     if (settled && (current?.id !== chosen.id || current.slide !== chosen.slide)) {
       this.newSong = { id: "", lines: 0 };
       return out("auto", [], { id: chosen.id, slide: chosen.slide, how: "auto" });
