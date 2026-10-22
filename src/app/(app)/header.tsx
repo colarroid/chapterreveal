@@ -4,7 +4,7 @@ import { BookOpen, History, LoaderCircle, LogOut, Music, Presentation, Settings,
 import Link, { useLinkStatus } from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { forgetOfflinePages, OfflineChip } from "@/components/offline";
+import { forgetOfflinePages } from "@/components/offline";
 import { ThemeToggle } from "@/components/theme";
 import { Logo } from "@/components/ui";
 import { forgetBibleKey } from "@/lib/scripture/bible-crypto";
@@ -195,7 +195,6 @@ export function AppHeader({ churchName, email, firstName, lastName }: { churchNa
       </nav>
 
       <div className="ml-auto flex items-center gap-3">
-        <OfflineChip scripture={path === "/dashboard"} />
         {/* Page-specific actions (the console's End service) render in here. */}
         <div id={HEADER_ACTIONS_ID} className="flex items-center gap-3 empty:hidden" />
         <AccountMenu person={{ email, firstName, lastName }} churchName={churchName} />
