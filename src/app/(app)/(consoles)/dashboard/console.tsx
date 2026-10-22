@@ -5,7 +5,6 @@ import {
   AudioLines,
   BookOpen,
   ChevronLeft,
-  CloudUpload,
   ChevronRight,
   ExternalLink,
   LoaderCircle,
@@ -51,8 +50,6 @@ import { useLiveService, type HeardHandler, type NotFound, type Suggestion, type
 const AUTO_KEY = "scripture.autoMode";
 /** Words heard this recently still count as the verse being read. */
 const READING_HOLD_MS = 4000;
-/** How long lines may wait to save before the console says so. */
-const SAVE_STUCK_MS = 15_000;
 const TRANSLATION_KEY = "scripture.translation";
 
 interface Props {
@@ -700,9 +697,8 @@ export function Console({ churchId, userId, screenToken, translationId, translat
       text: "Chrome blocked the projector window. Click the pop-up icon at the right of the address bar, choose Always allow, then press Present again.",
     });
   if (live.error) warnings.push({ icon: TriangleAlert, text: live.error });
-  if (live.warnings.offline)
-    warnings.push({ icon: WifiOff, text: "You're offline. Search still works from the saved Bible; detection resumes when the connection is back." });
-  if (live.phase === "live" && live.status === "reconnecting") warnings.push({ icon: WifiOff, text: "Transcription connection dropped. Reconnecting." });
+  // Offline: the notice at the bottom of the page says so (../../offline-notice.tsx).
+  if (live.phase === "live" && live.status === "reconnecting" && !live.warnings.offline) warnings.push({ icon: WifiOff, text: "Transcription connection dropped. Reconnecting." });
   if (live.phase === "live" && live.warnings.silent) warnings.push({ icon: TriangleAlert, text: "No sound on the selected input for 10 seconds. Check the desk feed." });
   if (live.phase === "live" && live.warnings.clipping) warnings.push({ icon: TriangleAlert, text: "The input is clipping. Turn the feed down at the desk." });
 
@@ -1089,19 +1085,6 @@ function ControlBar({
 }) {
   // The service's running time is recorded (History), not shown here.
 
-  // Every transcript line waits a moment to save as a matter of course; the
-  // note only shows when saving has been held up for a while (offline).
-  const [saveStuck, setSaveStuck] = useState(false);
-  const waiting = live.unsaved > 0;
-  useEffect(() => {
-    if (!waiting) {
-      setSaveStuck(false);
-      return;
-    }
-    const t = setTimeout(() => setSaveStuck(true), SAVE_STUCK_MS);
-    return () => clearTimeout(t);
-  }, [waiting]);
-
   return (
     <div className="@container flex flex-wrap items-center gap-x-4 gap-y-3 card px-4 py-3">
       <label className="flex min-w-0 items-center gap-2.5">
@@ -1147,17 +1130,10 @@ function ControlBar({
           Auto
           <SwitchTrack on={auto} tone="accent" />
         </button>
-        {live.phase === "live" && live.status !== "live" && (
+        {live.phase === "live" && live.status !== "live" && !live.warnings.offline && (
           <Chip tone="warn">
             <WifiOff size={13} /> Reconnecting
           </Chip>
-        )}
-        {saveStuck && (
-          <span title="Transcript lines and verses shown are stored on this computer and will be saved as soon as the connection allows.">
-            <Chip tone="warn">
-              <CloudUpload size={13} /> {live.unsaved} waiting to save
-            </Chip>
-          </span>
         )}
         {live.phase === "ending" && <PixelLoader label="Saving transcript" />}
       </div>

@@ -1,5 +1,6 @@
 import { requireMembership } from "@/lib/supabase/server";
 import { AppHeader } from "./header";
+import { OfflineNotice } from "./offline-notice";
 import { UpdateNotice } from "./update-notice";
 
 // The church console and its settings are private.
@@ -12,6 +13,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <AppHeader churchName={m.churchName} email={m.email} firstName={m.firstName} lastName={m.lastName} />
       {children}
       <UpdateNotice />
+      <OfflineNotice />
     </div>
   );
 }
