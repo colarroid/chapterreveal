@@ -51,6 +51,8 @@ import { useLiveService, type HeardHandler, type NotFound, type Suggestion, type
 const AUTO_KEY = "scripture.autoMode";
 /** Words heard this recently still count as the verse being read. */
 const READING_HOLD_MS = 4000;
+/** How long lines may wait to save before the console says so. */
+const SAVE_STUCK_MS = 15_000;
 const TRANSLATION_KEY = "scripture.translation";
 
 interface Props {
@@ -1087,6 +1089,19 @@ function ControlBar({
 }) {
   // The service's running time is recorded (History), not shown here.
 
+  // Every transcript line waits a moment to save as a matter of course; the
+  // note only shows when saving has been held up for a while (offline).
+  const [saveStuck, setSaveStuck] = useState(false);
+  const waiting = live.unsaved > 0;
+  useEffect(() => {
+    if (!waiting) {
+      setSaveStuck(false);
+      return;
+    }
+    const t = setTimeout(() => setSaveStuck(true), SAVE_STUCK_MS);
+    return () => clearTimeout(t);
+  }, [waiting]);
+
   return (
     <div className="@container flex flex-wrap items-center gap-x-4 gap-y-3 card px-4 py-3">
       <label className="flex min-w-0 items-center gap-2.5">
@@ -1132,17 +1147,12 @@ function ControlBar({
           Auto
           <SwitchTrack on={auto} tone="accent" />
         </button>
-        {live.phase === "live" &&
-          (live.status === "live" ? (
-            <Chip tone="live">
-              <span className="h-2 w-2 animate-pulse rounded-full bg-negative" /> Live
-            </Chip>
-          ) : (
-            <Chip tone="warn">
-              <WifiOff size={13} /> Reconnecting
-            </Chip>
-          ))}
-        {live.unsaved > 0 && (
+        {live.phase === "live" && live.status !== "live" && (
+          <Chip tone="warn">
+            <WifiOff size={13} /> Reconnecting
+          </Chip>
+        )}
+        {saveStuck && (
           <span title="Transcript lines and verses shown are stored on this computer and will be saved as soon as the connection allows.">
             <Chip tone="warn">
               <CloudUpload size={13} /> {live.unsaved} waiting to save
