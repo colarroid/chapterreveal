@@ -36,9 +36,9 @@ const SIDES = [
 ];
 
 const STEPS = [
-  { title: "Set up your church", body: "Create an account, name your church and invite your media team." },
-  { title: "Connect the sound", body: "Pick the sound desk feed, then open the output on your projector or livestream." },
-  { title: "Start the service", body: "Press Start and it follows the sermon and the singing. Or click anything to show it yourself." },
+  { title: "Set up your church", body: "Create an account, name your church and invite your media team.", art: "/landing/step-setup.webp" },
+  { title: "Connect the sound", body: "Pick the sound desk feed, then open the output on your projector or livestream.", art: "/landing/step-sound.webp" },
+  { title: "Start the service", body: "Press Start and it follows the sermon and the singing. Or click anything to show it yourself.", art: "/landing/step-start.webp" },
 ];
 const FACTS = [
   { icon: Globe, label: "Nothing to install" },
@@ -125,8 +125,8 @@ export default async function Home() {
         {/* Three steps, first out of the hero. Sizes and spacing taken from
             gettakecontrol.app's steps section (964 px wide, 24 px padding,
             32 px corners, 34 px numbers, a 148 px illustration slot, 18/22 and
-            16/20 text). The illustration slots stay empty until the artwork
-            is ready. */}
+            16/20 text). Each step has a 3D icon that floats gently, one after
+            another (step-float in globals.css). */}
         <div className="mx-auto mt-12 max-w-[964px] lg:-mx-[34px]">
           <div className="ml-[27px] inline-flex items-center gap-2.5 rounded-t-2xl bg-surface px-4 py-2">
             <span className="grid h-4 w-4 place-items-center rounded-[4px] bg-accent-fill text-on-accent">
@@ -137,14 +137,26 @@ export default async function Home() {
             </p>
           </div>
           <ol className="grid drop-shadow-[0_6px_6px_rgba(18,18,17,0.04)] md:grid-cols-3">
-            {STEPS.map(({ title, body }, i) => (
+            {STEPS.map(({ title, body, art }, i) => (
               <li
                 key={title}
                 className="flex flex-col bg-bg p-6 first:rounded-t-[32px] last:rounded-b-[32px] not-first:border-t-[0.8px] not-first:border-line md:first:rounded-l-[32px] md:first:rounded-tr-none md:last:rounded-r-[32px] md:last:rounded-bl-none md:not-first:border-t-0 md:not-first:border-l-[0.8px]"
               >
                 <span className="mb-1 grid h-[34px] w-[34px] place-items-center rounded-full bg-surface-2 text-lg font-semibold tabular-nums">{i + 1}</span>
-                {/* Illustration slot. */}
-                <div className="mb-4 h-28 md:h-[148px]" aria-hidden />
+                {/* The step's 3D icon, floating; each starts a beat after the last. */}
+                <div className="mb-4 flex h-28 items-center justify-center md:h-[148px]" aria-hidden>
+                  {/* eslint-disable-next-line @next/next/no-img-element -- a small fixed WebP, already sized */}
+                  <img
+                    src={art}
+                    alt=""
+                    width={160}
+                    height={160}
+                    loading="lazy"
+                    decoding="async"
+                    className="step-float h-28 w-28 object-contain drop-shadow-[0_18px_22px_rgba(18,18,17,0.18)] md:h-[148px] md:w-[148px]"
+                    style={{ animationDelay: `${i * -1.6}s` }}
+                  />
+                </div>
                 <h2 className="mb-3 text-lg leading-[22px] font-semibold tracking-[-0.18px]">{title}</h2>
                 <p className="text-base leading-5 font-medium text-muted">{body}</p>
               </li>

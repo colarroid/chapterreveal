@@ -215,6 +215,22 @@ body {
   will-change: transform;
 }
 
+/* The landing page's step icons: a slow float with a slight sway, each
+   card a beat behind the last (a negative delay in page.tsx). */
+@keyframes step-float {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-2deg);
+  }
+  50% {
+    transform: translateY(-10px) rotate(2deg);
+  }
+}
+.step-float {
+  animation: step-float 4.8s ease-in-out infinite;
+  will-change: transform;
+}
+
 /* Tooltips (components/motion.tsx): a quick fade and scale in, after beUI. */
 @keyframes tooltip-in {
   from {
@@ -231,6 +247,9 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .step-float {
+    animation: none;
+  }
   .tooltip-in {
     animation: none;
   }
