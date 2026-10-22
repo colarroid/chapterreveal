@@ -12,6 +12,7 @@ import { Dropdown } from "@/components/dropdown";
 import { DEFAULT_COUNTRY } from "@/lib/geo";
 import { DEFAULT_TRANSLATION, type TranslationInfo } from "@/lib/scripture/translations";
 import { CONSOLE_CHANNEL, type ConsoleMessage } from "@/lib/live/screen";
+import { cleanTakeDown, TAKE_DOWN_MAX, TAKE_DOWN_MIN, TAKE_DOWN_MODES, type TakeDownMode } from "@/lib/live/take-down";
 import { supabaseBrowser } from "@/lib/supabase/client";
 
 export interface Member {
@@ -108,6 +109,8 @@ export function Settings(p: Props) {
   const [name, setName] = useState(p.churchName);
   const [silence, setSilence] = useState(String(p.silenceEndMinutes));
   const [translation, setTranslation] = useState(String(p.settings.translation ?? DEFAULT_TRANSLATION));
+  const [takeDown, setTakeDown] = useState(() => cleanTakeDown(p.settings));
+  const [takeSeconds, setTakeSeconds] = useState(String(cleanTakeDown(p.settings).seconds));
   const [address, setAddress] = useState<ChurchAddress>(p.address.country ? p.address : { ...p.address, country: DEFAULT_COUNTRY });
   const [me, setMe] = useState(p.profile);
   const [weekly, setWeekly] = useState(p.settings.weekly_summary === true);
@@ -280,12 +283,13 @@ export function Settings(p: Props) {
         </Section>
 
         {p.isAdmin && (
-          <Section icon={ShieldCheck} title="Church" description="Your church's name and address, and when a forgotten service should end on its own.">
+          <Section icon={ShieldCheck} title="Church" description="Your church's name and address, how verses come off the screen, and when a forgotten service should end on its own.">
             <form
               className="space-y-4"
               onSubmit={(e) => {
                 e.preventDefault();
                 const minutes = Math.min(120, Math.max(5, Number(silence) || 20));
+                const wait = cleanTakeDown({ take_down_seconds: takeSeconds }).seconds;
                 void run(
                   () =>
                     supabase
@@ -295,7 +299,7 @@ export function Settings(p: Props) {
                         country_code: address.country,
                         region: address.region.trim(),
                         street_address: address.street.trim() || null,
-                        settings: { ...p.settings, silence_end_minutes: minutes, translation },
+                        settings: { ...p.settings, silence_end_minutes: minutes, translation, take_down: takeDown.mode, take_down_seconds: wait },
                       })
                       .eq("id", p.churchId),
                   "Saved.",
@@ -325,6 +329,40 @@ export function Settings(p: Props) {
                 />
                 <span className="mt-1.5 block text-xs text-muted">
                   What the console opens with. Operators can switch during a service.
+                </span>
+              </div>
+              <div>
+                <span className="text-sm font-bold">Take verses off the screen</span>
+                <div className="mt-1.5 flex flex-col gap-2 sm:flex-row">
+                  <Dropdown
+                    ariaLabel="Take verses off the screen"
+                    value={takeDown.mode}
+                    onChange={(v) => setTakeDown((t) => ({ ...t, mode: v as TakeDownMode }))}
+                    options={TAKE_DOWN_MODES.map((m) => ({ value: m.value, label: m.label }))}
+                    className="h-11 w-full min-w-0 text-[15px] sm:flex-1"
+                  />
+                  {takeDown.mode !== "manual" && (
+                    <label className="flex h-11 shrink-0 cursor-text items-center gap-2 rounded-full bg-surface-2 px-4 transition focus-within:ring-2 focus-within:ring-ink/80 hover:bg-surface-3 sm:w-40">
+                      <span className="sr-only">Seconds to wait</span>
+                      <input
+                        type="number"
+                        min={TAKE_DOWN_MIN}
+                        max={TAKE_DOWN_MAX}
+                        value={takeSeconds}
+                        onChange={(e) => setTakeSeconds(e.target.value)}
+                        className="w-full min-w-0 bg-transparent text-[15px] tabular-nums outline-none"
+                      />
+                      <span className="text-sm text-muted">seconds</span>
+                    </label>
+                  )}
+                </div>
+                <span className="mt-1.5 block text-xs text-muted">
+                  {takeDown.mode === "moves_on"
+                    ? "A verse stays up while it's being read, then comes off after this long. Only the words go; the background stays."
+                    : takeDown.mode === "time"
+                      ? "A verse comes off this long after it goes up. Only the words go; the background stays."
+                      : "Verses stay up until the operator presses Esc or shows another."}{" "}
+                  {takeDown.mode !== "manual" && "Works with Auto on. Operators can keep a verse up from the console."}
                 </span>
               </div>
               <Button type="submit" disabled={busy !== null} loading={busy === "church"}>

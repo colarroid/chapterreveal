@@ -14,6 +14,7 @@ import {
   Maximize,
   MonitorOff,
   MonitorUp,
+  Pin,
   Search,
   Square,
   TriangleAlert,
@@ -34,6 +35,7 @@ import { cleanDisplay, type DisplaySettings } from "@/lib/display/theme";
 import { Button, Chip, IconButton, Kbd, PixelLoader, SignalBars } from "@/components/ui";
 import { AUTO_REPEAT_MS, eligible, holdMs, readiness } from "@/lib/live/auto-show";
 import { outbox } from "@/lib/live/outbox";
+import { isReading, versePhrases, type TakeDown } from "@/lib/live/take-down";
 import { lastSpokenTranslation, matchSpokenTranslation } from "@/lib/scripture/spoken-translations";
 import { findTranslation, starredFirst, type TranslationInfo } from "@/lib/scripture/translations";
 import { closeProjector, fillProjectorScreen, presentOnProjector, useProjectorOpen } from "@/lib/live/present";
@@ -47,6 +49,8 @@ import { SwitchTrack, Tooltip } from "@/components/motion";
 import { useLiveService, type HeardHandler, type NotFound, type Suggestion, type VoiceCommand } from "./use-live-service";
 
 const AUTO_KEY = "scripture.autoMode";
+/** Words heard this recently still count as the verse being read. */
+const READING_HOLD_MS = 4000;
 const TRANSLATION_KEY = "scripture.translation";
 
 interface Props {
@@ -63,6 +67,8 @@ interface Props {
   /** Church admins can change the look from the console. */
   canEditDisplay: boolean;
   silenceEndMinutes: number;
+  /** When verses come off the screen on their own (Settings → Church). */
+  takeDown: TakeDown;
 }
 
 /** What the operator has put up: a reference laid out as slides, and which slide is showing. */
@@ -74,7 +80,7 @@ interface Selection {
 
 type ShowSource = "detected" | "search" | "step";
 
-export function Console({ churchId, userId, screenToken, translationId, translations, starred: initialStars, silenceEndMinutes, display: initialDisplay, canEditDisplay }: Props) {
+export function Console({ churchId, userId, screenToken, translationId, translations, starred: initialStars, silenceEndMinutes, display: initialDisplay, canEditDisplay, takeDown }: Props) {
   const active = useConsoleActive();
   const [bible, setBible] = useState<Translation | null>(null);
   const [bibleError, setBibleError] = useState("");
@@ -92,6 +98,15 @@ export function Console({ churchId, userId, screenToken, translationId, translat
     clearedRef.current = on;
     setCleared(on);
   }, []);
+  // The words on screen, for taking them down on their own (see the
+  // take-down section below): their phrases, when they went up, and when
+  // they were last heard being read. Keep up pins them until the next verse.
+  const onScreen = useRef({ phrases: new Set<number>(), since: 0, readAt: 0 });
+  const [kept, setKept] = useState(false);
+  const wentUp = useCallback((slide: Slide) => {
+    onScreen.current = { phrases: versePhrases(slide.lines), since: Date.now(), readAt: 0 };
+    setKept(false);
+  }, []);
   const selectionRef = useRef<Selection | null>(null);
   const selectedSlide = selection ? (selection.slides[selection.index] ?? null) : null;
   const onAir = isLive && !cleared ? selectedSlide : null;
@@ -108,7 +123,12 @@ export function Console({ churchId, userId, screenToken, translationId, translat
   const onCommand = useCallback((cmd: VoiceCommand) => commandRef.current?.(cmd), []);
   // Everything heard, for translations named aloud ("…in the KJV").
   const textRef = useRef<((text: string) => void) | null>(null);
-  const onText = useCallback((text: string) => textRef.current?.(text), []);
+  // …and to tell whether the verse on screen is being read.
+  const readRef = useRef<((text: string) => void) | null>(null);
+  const onText = useCallback((text: string) => {
+    textRef.current?.(text);
+    readRef.current?.(text);
+  }, []);
   // The last verse on screen, so a passage read aloud is followed from it.
   const currentVerse = useCallback(() => {
     const sel = selectionRef.current;
@@ -288,6 +308,7 @@ export function Console({ churchId, userId, screenToken, translationId, translat
         // The screen first: the broadcast leaves before React re-renders here.
         void screen.current?.show(slide);
         markCleared(false);
+        wentUp(slide);
         shownRef.current = { key: refKey(sel.ref), ref: sel.ref };
         logShown(slide, sel.ref, source, s);
       }
@@ -296,7 +317,7 @@ export function Console({ churchId, userId, screenToken, translationId, translat
       // Follow-ups like "verse 17" now mean this chapter.
       live.ctxRef.current = { book: sel.ref.book, chapter: sel.ref.chapter };
     },
-    [logShown, live.ctxRef, markCleared],
+    [logShown, live.ctxRef, markCleared, wentUp],
   );
 
   const showRef = useCallback(
@@ -352,11 +373,12 @@ export function Console({ churchId, userId, screenToken, translationId, translat
       const slide = sel?.slides[sel.index] ?? null;
       void screen.current?.show(slide);
       if (sel && slide) {
+        wentUp(slide);
         shownRef.current = { key: refKey(sel.ref), ref: sel.ref };
         logShown(slide, sel.ref, "step");
       }
     },
-    [logShown, markCleared],
+    [logShown, markCleared, wentUp],
   );
   const clear = useCallback(() => {
     if (!liveRef.current) return;
@@ -579,6 +601,40 @@ export function Console({ churchId, userId, screenToken, translationId, translat
 
   // ---- Keyboard -----------------------------------------------------------
 
+  // ---- Taking verses down --------------------------------------------------
+  // With Auto on, the words come off on their own (the background stays, as
+  // with Esc): a set time after the preacher stops reading them, or after
+  // they went up. See src/lib/live/take-down.ts. The countdown shows on the
+  // preview; Keep up (K) pins the verse until the next one.
+  useEffect(() => {
+    readRef.current = (text) => {
+      if (isReading(onScreen.current.phrases, text)) onScreen.current.readAt = Date.now();
+    };
+  }, []);
+  const armed = takeDown.mode !== "manual" && auto && !!onAir && !kept;
+  const [takeDownLeft, setTakeDownLeft] = useState<number | null>(null);
+  const [reading, setReading] = useState(false);
+  useEffect(() => {
+    if (!armed) {
+      setTakeDownLeft(null);
+      setReading(false);
+      return;
+    }
+    const tick = () => {
+      const { since, readAt } = onScreen.current;
+      const now = Date.now();
+      const follow = takeDown.mode === "moves_on";
+      // Words matching in the last few seconds: still being read.
+      setReading(follow && now - readAt < READING_HOLD_MS);
+      const left = takeDown.seconds - (now - (follow ? Math.max(since, readAt) : since)) / 1000;
+      if (left <= 0) clear();
+      else setTakeDownLeft(Math.ceil(left));
+    };
+    tick();
+    const t = setInterval(tick, 250);
+    return () => clearInterval(t);
+  }, [armed, takeDown, clear]);
+
   useEffect(() => {
     // Only the console on screen answers the keyboard (see ../active.ts).
     if (!active) return;
@@ -613,6 +669,8 @@ export function Console({ churchId, userId, screenToken, translationId, translat
       } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
         e.preventDefault();
         step(-1);
+      } else if ((e.key === "k" || e.key === "K") && (armed || kept)) {
+        setKept((v) => !v);
       } else if (e.key === "a" || e.key === "A") {
         setAuto((v) => !v);
       } else if (e.key === "/") {
@@ -622,7 +680,7 @@ export function Console({ churchId, userId, screenToken, translationId, translat
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [active, clear, step, showRef, live.suggestions, goLive, typeDigit, putUp]);
+  }, [active, clear, step, showRef, live.suggestions, goLive, typeDigit, putUp, armed, kept]);
 
   // ---- Render -------------------------------------------------------------
 
@@ -750,6 +808,10 @@ export function Console({ churchId, userId, screenToken, translationId, translat
                       >
                         {onAir ? "Live" : "Preview"}
                       </span>
+                    )}
+                    {/* The take-down countdown: on this preview only, never on the projector. */}
+                    {onAir && auto && takeDown.mode !== "manual" && (
+                      <TakeDownBadge kept={kept} reading={reading} left={takeDownLeft} total={takeDown.seconds} onToggle={() => setKept((v) => !v)} />
                     )}
                   </div>
                   </div>
@@ -959,6 +1021,43 @@ export function Console({ churchId, userId, screenToken, translationId, translat
 }
 
 // ---------------------------------------------------------------------------
+
+/**
+ * On the preview's top-right corner (never the projector): when the verse
+ * comes off the screen on its own, with a thin bar along the bottom running
+ * down. Clicking it (or K) keeps the verse up until the next one.
+ */
+function TakeDownBadge({ kept, reading, left, total, onToggle }: { kept: boolean; reading: boolean; left: number | null; total: number; onToggle: () => void }) {
+  const time = left === null ? "" : left < 60 ? `${left}s` : `${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}`;
+  const label = kept ? "Kept up" : reading ? "Reading" : time ? `Clears in ${time}` : "";
+  if (!label) return null;
+  const Icon = kept ? Pin : reading ? BookOpen : Timer;
+  return (
+    <>
+      <Tooltip label={kept ? "Let it clear on its own again (K)" : "Keep this verse up until the next one (K)"} side="bottom">
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-pressed={kept}
+          className={`absolute top-2 right-2 inline-flex h-6 items-center gap-1 rounded-full px-2 text-[10px] font-bold tabular-nums transition active:scale-[0.96] ${
+            kept ? "bg-white text-black" : "bg-black/55 text-white/90 ring-1 ring-white/15 backdrop-blur-sm hover:bg-black/75"
+          }`}
+        >
+          <Icon size={11} className={kept ? "fill-current" : ""} />
+          {label}
+        </button>
+      </Tooltip>
+      {!kept && left !== null && (
+        <span aria-hidden className="absolute inset-x-0 bottom-0 h-[3px] bg-white/10">
+          <span
+            className="block h-full bg-white/60 transition-[width] duration-1000 ease-linear"
+            style={{ width: `${reading ? 100 : Math.max(0, ((left - 1) / total) * 100)}%` }}
+          />
+        </span>
+      )}
+    </>
+  );
+}
 
 function ControlBar({
   live,

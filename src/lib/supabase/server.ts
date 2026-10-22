@@ -47,7 +47,7 @@ export interface Membership {
   churchId: string;
   churchName: string;
   role: "admin" | "operator";
-  settings: { translation: string; silence_end_minutes: number; display?: unknown };
+  settings: { translation: string; silence_end_minutes: number; display?: unknown; take_down?: unknown; take_down_seconds?: unknown };
   /** The secret in the church's output page URL. */
   screenToken: string;
   address: { country: string; region: string; street: string };

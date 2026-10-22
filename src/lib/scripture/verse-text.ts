@@ -67,6 +67,9 @@ const triples = (w: string[]) => {
   return out;
 };
 
+/** The phrases (word triples) in a text, read the same way as the index reads verses. */
+export const phrasesOf = (text: string): number[] => triples(verseWords(text));
+
 export class VerseTextIndex {
   /** Sorted: phrase hash * ID_SPACE + verse id. */
   private entries: Float64Array;

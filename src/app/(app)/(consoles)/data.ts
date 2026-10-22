@@ -2,6 +2,7 @@ import "server-only";
 import { after } from "next/server";
 import { cloudinaryConfig, destroy } from "@/lib/cloudinary";
 import { cleanDisplay, type DisplaySettings } from "@/lib/display/theme";
+import { cleanTakeDown, type TakeDown } from "@/lib/live/take-down";
 import type { Plan } from "@/lib/plans";
 import { findTranslation, type TranslationInfo } from "@/lib/scripture/translations";
 import { getStarredTranslations, getTranslations } from "@/lib/scripture/translations-server";
@@ -22,6 +23,8 @@ export interface ConsoleBase {
   silenceEndMinutes: number;
   display: DisplaySettings;
   canEditDisplay: boolean;
+  /** When verses come off the screen on their own. */
+  takeDown: TakeDown;
 }
 
 export const baseFor = (m: Membership): ConsoleBase => ({
@@ -31,6 +34,7 @@ export const baseFor = (m: Membership): ConsoleBase => ({
   silenceEndMinutes: m.settings.silence_end_minutes ?? 20,
   display: cleanDisplay(m.settings.display),
   canEditDisplay: m.role === "admin",
+  takeDown: cleanTakeDown(m.settings),
 });
 
 export interface ScriptureData {
