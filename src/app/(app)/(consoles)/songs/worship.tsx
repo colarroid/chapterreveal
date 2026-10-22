@@ -6,6 +6,8 @@ import {
   ChevronRight,
   ExternalLink,
   LoaderCircle,
+  Lock as LockIcon,
+  LockOpen,
   Mic,
   Maximize,
   MonitorOff,
@@ -35,7 +37,8 @@ import { CONSOLE_CHANNEL, SCREEN_TAKEN, ScreenSender, TAKEN_ELSEWHERE, type Cons
 import type { Slide } from "@/lib/scripture/bible";
 import { songKeyterms } from "@/lib/songs/keyterms";
 import { outbox } from "@/lib/live/outbox";
-import { SongIndex, type SongMatch } from "@/lib/songs/matcher";
+import { FollowEngine, usageLift, type Suggested } from "@/lib/songs/engine";
+import { SongIndex } from "@/lib/songs/matcher";
 import { fetchAllSongs, keepSongs, songsAreFresh, songsInMemory, storedSongs, type FullSong } from "@/lib/songs/store";
 import { firstLine, songBody } from "@/lib/songs/songs";
 import { supabaseBrowser } from "@/lib/supabase/client";
@@ -62,6 +65,10 @@ const FILTERS: { value: LibraryFilter; label: string; empty: string }[] = [
 ];
 const FILTER_KEY = "scripture.songFilter";
 const SETLIST_KEY = "scripture.setlist";
+
+/** What put a slide on screen, for the detection log. */
+type ShownHow = "auto" | "early" | "suggestion" | "operator";
+
 
 
 const AUTO_KEY = "scripture.worshipAuto";
@@ -315,15 +322,55 @@ export function Worship({
   }
 
 
-  /** Selects a slide; when live, it goes to the screen first. */
-  const putUp = useCallback((id: string, slide: number) => {
+  // ---- Following ------------------------------------------------------------
+  // Once a song is up it's locked: matching follows its lines and other
+  // songs are only suggested until the singing has clearly moved on
+  // (lib/songs/follow.ts). The operator can lock it for good (K).
+  const engine = useRef(new FollowEngine());
+  const [lock, setLock] = useState<{ id: string; manual: boolean } | null>(null);
+  const syncLock = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    syncLock.current = () => {
+      const l = engine.current.follower.lock;
+      setLock(l ? { ...l } : null);
+    };
+  }, []);
+  const toggleLock = useCallback(() => {
+    const f = engine.current.follower;
+    const cur = currentRef.current;
+    if (f.lock?.manual) f.unlock();
+    else if (cur) f.lockTo(cur.id, true);
+    syncLock.current?.();
+  }, []);
+  // How widely each song is sung (migration 0027): a small lift for
+  // well-known songs and this church's recent ones, to settle near-ties.
+  useEffect(() => {
+    void supabaseBrowser()
+      .rpc("song_usage")
+      .then(({ data }) => {
+        engine.current.usage = usageLift((data ?? []) as Parameters<typeof usageLift>[0]);
+      });
+  }, []);
+  // The detection log (migration 0027), set up once the service is known.
+  const logDetection = useRef<((row: Record<string, unknown>) => void) | null>(null);
+
+  /**
+   * Selects a slide; when live, it goes to the screen first. `how` says
+   * what put it there, for the detection log. A new song is locked (see
+   * lib/songs/follow.ts), so following stays on it.
+   */
+  const putUp = useCallback((id: string, slide: number, how: ShownHow = "operator") => {
     const song = songById(id);
     if (!song) return;
     const i = Math.max(0, Math.min(slide, song.slides.length - 1));
+    const before = currentRef.current;
     if (liveRef.current) {
       void screen.current?.show(toSlide(song, i));
       markCleared(false);
+      logDetection.current?.({ kind: "shown", decision: how, song_id: id, slide: i, current_song_id: before?.id ?? null, current_slide: before?.slide ?? null });
     }
+    engine.current.shown(id, before);
+    syncLock.current?.();
     const next = { id, slide: i };
     currentRef.current = next;
     setCurrent(next);
@@ -379,16 +426,15 @@ export function Worship({
     } catch {}
   }, [auto]);
 
-  const indexRef = useRef(index);
-  const setIndexRef = useRef(setIndex);
   useEffect(() => {
-    indexRef.current = index;
-    setIndexRef.current = setIndex;
+    engine.current.library = index;
+    engine.current.playlist = setIndex;
   }, [index, setIndex]);
   const sung = useRef(""); // the last finished lines, kept short
-  const lastCandidate = useRef("");
   const [heard, setHeard] = useState("");
-  const [suggestion, setSuggestion] = useState<(SongMatch & { id: string }) | null>(null);
+  // Songs it could be, best first, while detection isn't sure enough to show one.
+  const [suggestions, setSuggestions] = useState<Suggested[]>([]);
+  const picksRef = useRef<Suggested[]>([]);
 
   const onText = useCallback(
     (text: string, final: boolean) => {
@@ -396,33 +442,25 @@ export function Worship({
       if (final) sung.current = recent.split(/\s+/).slice(-24).join(" ");
       setHeard(recent.split(/\s+/).slice(-14).join(" "));
       const cur = currentRef.current;
-      const pick = (idx: SongIndex | null) => {
-        if (!idx) return null;
-        const pos = cur ? idx.songs.findIndex((s) => s.id === cur.id) : -1;
-        const r = idx.match(recent, cur && pos >= 0 ? { song: pos, slide: cur.slide } : null);
-        return r ? { ...r, id: idx.songs[r.song].id } : null;
-      };
-      // The setlist first. The whole library only suggests while a setlist
-      // is chosen: a song nobody planned never jumps onto the screen.
-      const inSet = setIndexRef.current;
-      let m = pick(inSet);
-      if (!m?.confident) {
-        const all = pick(indexRef.current);
-        if (all && (!m || all.score > m.score)) m = inSet ? { ...all, confident: false } : all;
+      const o = engine.current.hear({ recent, final, current: cur, follow: autoRef.current, now: Date.now() });
+      syncLock.current?.();
+      setSuggestions(o.suggestions);
+      if (o.show) putUp(o.show.id, o.show.slide, o.show.how);
+      // One log line per finished line of singing.
+      if (final) {
+        logDetection.current?.({
+          kind: "heard",
+          heard: recent.slice(-600),
+          candidates: o.candidates.map((c) => ({ song_id: c.id, slide: c.slide, score: c.score })),
+          decision: o.decision,
+          song_id: o.chosen?.id ?? null,
+          slide: o.chosen?.slide ?? null,
+          current_song_id: cur?.id ?? null,
+          current_slide: cur?.slide ?? null,
+          locked: o.locked,
+          playlist: o.playlist,
+        });
       }
-      if (!m) return;
-      const id = m.id;
-      if (!m.confident || !autoRef.current) {
-        setSuggestion({ ...m, id });
-        return;
-      }
-      setSuggestion(null);
-      // Move only when the same slide wins twice in a row (or the line is
-      // finished), so a half-heard phrase doesn't flick the screen.
-      const key = `${id}:${m.slide}`;
-      const settled = final || lastCandidate.current === key;
-      lastCandidate.current = key;
-      if (settled && (cur?.id !== id || cur.slide !== m.slide)) putUp(id, m.slide);
     },
     [putUp],
   );
@@ -441,9 +479,36 @@ export function Worship({
     if (live.phase === "idle") {
       sung.current = "";
       setHeard("");
-      setSuggestion(null);
+      setSuggestions([]);
     }
   }, [live.phase]);
+
+  useEffect(() => {
+    const serviceId = live.serviceId;
+    logDetection.current = null;
+    if (!serviceId) return;
+    let on = true;
+    // Only once the table exists (migration 0027): rows for a missing table
+    // would wait in this browser's save queue for ever.
+    void supabaseBrowser()
+      .from("song_detections")
+      .select("id", { head: true })
+      .limit(1)
+      .then(({ error }) => {
+        if (!on || error) return;
+        logDetection.current = (row) =>
+          outbox(supabaseBrowser()).add("song_detections", {
+            client_id: crypto.randomUUID(),
+            service_id: serviceId,
+            church_id: churchId,
+            at: new Date().toISOString(),
+            ...row,
+          });
+      });
+    return () => {
+      on = false;
+    };
+  }, [live.serviceId, churchId]);
 
   // Each song that goes up live during a service, once, for the service
   // history and the weekly summary. Kept offline first, like the verses.
@@ -472,7 +537,17 @@ export function Worship({
     if (!active) return;
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
-      if (t.closest("input, textarea, [role=listbox], [contenteditable=true]") || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (t.closest("input, textarea, [role=listbox], [contenteditable=true]")) return;
+      // Alt + 1 to 3 puts up a suggested song.
+      if (e.altKey && !e.ctrlKey && !e.metaKey && /^[1-3]$/.test(e.key)) {
+        const x = picksRef.current[Number(e.key) - 1];
+        if (x) {
+          e.preventDefault();
+          putUp(x.id, x.slide, "suggestion");
+        }
+        return;
+      }
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
       if (e.key === "ArrowRight" || e.key === "PageDown" || e.key === " ") {
         e.preventDefault();
         step(1);
@@ -486,10 +561,11 @@ export function Worship({
         putUp(currentRef.current.id, currentRef.current.slide);
       }
       else if (e.key === "a" || e.key === "A") setAuto((v) => !v);
+      else if (e.key === "k" || e.key === "K") toggleLock();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [active, step, goLive, clear, putUp, toggleLive]);
+  }, [active, step, goLive, clear, putUp, toggleLive, toggleLock]);
 
   // ---- Library and editing --------------------------------------------------
   const [query, setQuery] = useState("");
@@ -579,7 +655,15 @@ export function Worship({
   }
 
   const onAir = isLive && !cleared ? selectedSlide : null;
-  const suggested = suggestion && songs ? songs[byId.get(suggestion.id) ?? -1] : null;
+  // Suggestions that aren't what's already up, with their titles.
+  const picks = suggestions
+    .filter((x) => current?.id !== x.id || current.slide !== x.slide)
+    .map((x) => ({ ...x, title: songs?.[byId.get(x.id) ?? -1]?.title }))
+    .filter((x): x is Suggested & { title: string } => !!x.title);
+  // For Alt+1, 2, 3.
+  useEffect(() => {
+    picksRef.current = picks;
+  });
 
   return (
     <div className="flex flex-col gap-4 px-4 pb-4 lg:grid lg:h-[calc(100dvh-4rem)] lg:min-h-[520px] lg:grid-cols-[minmax(0,1fr)_minmax(320px,400px)]">
@@ -657,6 +741,36 @@ export function Worship({
             <>
                 <div className="flex h-14 shrink-0 items-center gap-2 px-4">
                   <h2 className="min-w-0 flex-1 truncate font-bold">{currentSong?.title ?? "Song"}</h2>
+                  {currentSong &&
+                    (() => {
+                      // Locked by the operator, followed (locked on its own
+                      // until the singing moves on), or neither.
+                      const state = lock?.id !== currentSong.id ? "off" : lock.manual ? "locked" : "following";
+                      return (
+                        <button
+                          type="button"
+                          aria-pressed={state === "locked"}
+                          onClick={toggleLock}
+                          title={
+                            state === "locked"
+                              ? "Locked: following stays on this song until you unlock it (K)"
+                              : state === "following"
+                                ? "Following this song until the singing moves on. Lock it to stay on it whatever else it sounds like (K)"
+                                : "Lock: follow only this song, whatever else it sounds like (K)"
+                          }
+                          className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full px-3 text-xs font-bold transition active:scale-[0.97] ${
+                            state === "locked"
+                              ? "bg-ink text-bg"
+                              : state === "following"
+                                ? "bg-accent-fill/15 text-accent hover:bg-accent-fill/25"
+                                : "bg-surface-2 text-muted hover:bg-surface-3 hover:text-ink"
+                          }`}
+                        >
+                          {state === "locked" ? <LockIcon size={13} /> : <LockOpen size={13} />}
+                          {state === "locked" ? "Locked" : state === "following" ? "Following" : "Lock"}
+                        </button>
+                      );
+                    })()}
                   {currentSong && !currentSong.shared && (
                     <>
                       <IconButton label="Edit song" onClick={() => setEditing(currentSong)}>
@@ -687,19 +801,29 @@ export function Worship({
                   </div>
                 )}
 
-                {/* Heard, but not sure enough (or Follow is off): one click puts it up. */}
-                {suggested && suggestion && (current?.id !== suggestion.id || current.slide !== suggestion.slide) && (
-                  <button
-                    type="button"
-                    onClick={() => putUp(suggestion.id, suggestion.slide)}
-                    className="mx-3 mb-2 flex items-center gap-3 rounded-lg bg-accent-fill/10 px-3 py-2 text-left text-sm transition hover:bg-accent-fill/20"
-                  >
-                    <AudioLines size={16} className="shrink-0 text-accent" />
-                    <span className="min-w-0 flex-1 truncate">
-                      Sounds like <b>{suggested.title}</b>, slide {suggestion.slide + 1}
+                {/* Heard, but not sure enough (or Follow is off): the songs it
+                    could be, best first. One click (or Alt+1, 2, 3) puts one up. */}
+                {picks.length > 0 && (
+                  <div className="mx-3 mb-2 flex flex-wrap items-center gap-1.5 rounded-lg bg-accent-fill/10 px-2.5 py-2">
+                    <span className="mr-1 inline-flex items-center gap-1.5 text-xs font-bold text-accent">
+                      <AudioLines size={15} /> Sounds like
                     </span>
-                    <span className="text-xs font-bold text-accent">Show</span>
-                  </button>
+                    {picks.map((x, i) => (
+                      <button
+                        key={x.id}
+                        type="button"
+                        onClick={() => putUp(x.id, x.slide, "suggestion")}
+                        title={`Show ${x.title}, slide ${x.slide + 1} (Alt+${i + 1})`}
+                        className={`inline-flex h-8 max-w-full min-w-0 items-center gap-2 rounded-full pr-1.5 pl-3 text-sm transition active:scale-[0.97] ${
+                          i === 0 ? "bg-accent-fill font-bold text-on-accent hover:brightness-105" : "bg-surface font-semibold text-ink hover:bg-surface-3"
+                        }`}
+                      >
+                        <span className="min-w-0 truncate">{x.title}</span>
+                        <span className={`shrink-0 text-xs tabular-nums ${i === 0 ? "opacity-70" : "text-muted"}`}>{x.slide + 1}</span>
+                        <Kbd>{`⌥${i + 1}`}</Kbd>
+                      </button>
+                    ))}
+                  </div>
                 )}
 
                 {currentSong ? (

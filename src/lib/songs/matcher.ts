@@ -7,6 +7,11 @@
 // is preferred, so a chorus shared by two songs stays on the right one.
 // Singing transcribes less cleanly than speech, so it never needs every
 // word: two or three matching phrases are enough.
+//
+// Order counts too. Two songs can share a line, but rarely several lines in
+// the same order, so phrases are strung into runs that move forward through
+// a song (same slide, or on by one or two), and a song scores by its best
+// run. The run's last phrase says where the singer is now.
 
 import type { SongSlide } from "./songs";
 
@@ -16,13 +21,39 @@ export interface IndexedSong {
   slides: SongSlide[];
 }
 
-export interface SongMatch {
+/** A song that could be the one being sung, at the slide it's up to. */
+export interface Candidate {
   song: number;
   slide: number;
   score: number;
+}
+
+export interface SongMatch extends Candidate {
   /** Safe to put on screen without the operator. */
   confident: boolean;
+  /** The best few songs, best first (one each), for the operator to pick from. */
+  candidates: Candidate[];
 }
+
+export interface MatchOptions {
+  /** Only this song (a locked song): the question is which line, not which song. */
+  only?: number;
+  /**
+   * A small nudge per song, about 1 to 1.35: songs sung widely across
+   * churches, or recently here. Breaks near-ties; never decides on its own.
+   */
+  prior?: (song: number) => number;
+}
+
+/** How many of the latest words are compared: a couple of lines. */
+const WINDOW = 20;
+
+/**
+ * When a song is clear enough to go up on its own: its score, and how far
+ * ahead of the next song it must be. Tuned on a real songbook with
+ * simulated mishearing (see the replay on the History page for services).
+ */
+export const CONFIDENT = { score: 2, lead: 1.5 };
 
 export function words(text: string): string[] {
   return text
@@ -71,13 +102,36 @@ const unpack = (p: Posting) => ({ song: Math.floor(p / 4096), slide: p % 4096 })
 export class SongIndex {
   readonly songs: IndexedSong[];
   private grams = new Map<string, Posting[]>();
+  /** Per song, per slide: the slides with the same words (a chorus sung again). */
+  private twins: number[][][];
+  /** Each song's distinct words, to tell when two songs are copies of each other. */
+  private bags: Set<string>[];
 
   constructor(songs: IndexedSong[]) {
     this.songs = songs;
+    // Each slide's words, worked out once (thousands of songs load at once).
+    const slideWords = songs.map((song) => song.slides.map((sl) => words(sl.text)));
+    // The same word sounds the same every time: work it out once too.
+    const sounds = new Map<string, string>();
+    const sound = (w: string) => {
+      let k = sounds.get(w);
+      if (k === undefined) sounds.set(w, (k = soundKey(w)));
+      return k;
+    };
+    this.bags = slideWords.map((slides) => new Set(slides.flat()));
+    this.twins = slideWords.map((slides) => {
+      const byText = new Map<string, number[]>();
+      const keys = slides.map((w, i) => {
+        const key = w.join(" ");
+        byText.set(key, [...(byText.get(key) ?? []), i]);
+        return key;
+      });
+      return keys.map((k) => byText.get(k)!);
+    });
     songs.forEach((song, si) => {
       let carry: string[] = [];
-      song.slides.slice(0, 4096).forEach((slide, li) => {
-        const w = words(slide.text);
+      song.slides.slice(0, 4096).forEach((_, li) => {
+        const w = slideWords[si][li];
         // The last words of the slide before join this one's first, so a
         // phrase sung across the change still points at the new slide.
         const seq = [...carry, ...w];
@@ -86,7 +140,7 @@ export class SongIndex {
         // Pairs too, marked apart, for slides of one or two short lines.
         for (let i = 0; i + 1 < w.length; i++) seen.add(`2:${w[i]} ${w[i + 1]}`);
         // And by sound, for words the transcriber heard slightly wrong.
-        const k = seq.map(soundKey);
+        const k = seq.map(sound);
         for (let i = 0; i + 2 < k.length; i++) seen.add(`s:${k[i]} ${k[i + 1]} ${k[i + 2]}`);
         for (const g of seen) {
           let list = this.grams.get(g);
@@ -100,60 +154,147 @@ export class SongIndex {
 
   /**
    * The slide that best matches what was just sung. `heard` is the recent
-   * transcript (the last dozen words are used); `current` is what is on
+   * transcript (the last couple of lines are used); `current` is what is on
    * screen now, if anything.
    */
-  match(heard: string, current?: { song: number; slide: number } | null): SongMatch | null {
-    const w = words(heard).slice(-12);
+  match(heard: string, current?: { song: number; slide: number } | null, opts: MatchOptions = {}): SongMatch | null {
+    const w = words(heard).slice(-WINDOW);
     if (w.length < 3) return null;
 
-    const scores = new Map<Posting, number>();
-    const add = (g: string, weight: number) => {
+    // Every phrase heard that's in a song: where in the words it was heard,
+    // which slide it's on, and how much it says (rare phrases say more).
+    const hits = new Map<number, Hit[]>();
+    const add = (g: string, weight: number, at: number) => {
       const list = this.grams.get(g);
       if (!list) return;
-      // Rare phrases identify a song; common ones barely count.
       const idf = weight / Math.log2(2 + list.length);
-      for (const p of list) scores.set(p, (scores.get(p) ?? 0) + idf);
+      for (const p of list) {
+        const { song, slide } = unpack(p);
+        if (opts.only !== undefined && song !== opts.only) continue;
+        let h = hits.get(song);
+        if (!h) hits.set(song, (h = []));
+        h.push({ at, slide, weight: idf });
+      }
     };
-    for (let i = 0; i + 2 < w.length; i++) add(`${w[i]} ${w[i + 1]} ${w[i + 2]}`, 1);
-    for (let i = 0; i + 1 < w.length; i++) add(`2:${w[i]} ${w[i + 1]}`, 0.35);
+    for (let i = 0; i + 2 < w.length; i++) add(`${w[i]} ${w[i + 1]} ${w[i + 2]}`, 1, i + 2);
+    for (let i = 0; i + 1 < w.length; i++) add(`2:${w[i]} ${w[i + 1]}`, 0.35, i + 1);
     const k = w.map(soundKey);
-    for (let i = 0; i + 2 < k.length; i++) add(`s:${k[i]} ${k[i + 1]} ${k[i + 2]}`, 0.6);
-    if (!scores.size) return null;
+    for (let i = 0; i + 2 < k.length; i++) add(`s:${k[i]} ${k[i + 1]} ${k[i + 2]}`, 0.6, i + 2);
+    if (!hits.size) return null;
 
-    // Prefer the song being sung, and within it the slides just ahead.
-    let best: { p: Posting; s: number } | null = null;
-    let inCurrent: { p: Posting; s: number } | null = null;
-    const bestBySong = new Map<number, number>();
-    for (const [p, raw] of scores) {
-      const { song, slide } = unpack(p);
-      let s = raw;
+    const scored: Candidate[] = [];
+    let inCurrent: Candidate | null = null;
+    for (const [song, list] of hits) {
+      const run = bestRun(list);
+      let s = run.score;
+      let slide = run.slide;
+      // Prefer the song being sung, and within it the slides just ahead.
       if (current && song === current.song) {
+        slide = this.nearest(song, slide, current.slide);
         s *= 1.5;
         const ahead = slide - current.slide;
         if (ahead === 0 || ahead === 1) s *= 1.25;
+        // A weaker match is enough to move within the song on screen.
+        if (slide >= current.slide - 1 && slide <= current.slide + 3) inCurrent = { song, slide, score: s };
       }
-      if (!best || s > best.s) best = { p, s };
-      if (current && song === current.song && slide >= current.slide - 1 && slide <= current.slide + 3 && (!inCurrent || s > inCurrent.s)) {
-        inCurrent = { p, s };
-      }
-      if (s > (bestBySong.get(song) ?? 0)) bestBySong.set(song, s);
+      s *= Math.min(1.35, Math.max(1, opts.prior?.(song) ?? 1));
+      scored.push({ song, slide, score: s });
     }
-    if (!best) return null;
-    const { song, slide } = unpack(best.p);
-
-    // Confident: enough matching phrases, and clearly ahead of any other song.
-    let runnerUp = 0;
-    for (const [other, s] of bestBySong) if (other !== song && s > runnerUp) runnerUp = s;
-    const confident = best.s >= 1.2 && best.s >= runnerUp * 1.4;
-    if (confident) return { song, slide, score: Math.round(best.s * 100) / 100, confident };
-
-    // Within the song on screen, a weaker match is enough to move to a
-    // nearby slide: the song is already known, only the line is in question.
-    if (inCurrent && inCurrent.s >= 0.6 && inCurrent.s >= best.s * 0.8) {
-      const at = unpack(inCurrent.p);
-      return { song: at.song, slide: at.slide, score: Math.round(inCurrent.s * 100) / 100, confident: true };
+    scored.sort((a, b) => b.score - a.score);
+    const round = (c: Candidate): Candidate => ({ ...c, score: Math.round(c.score * 100) / 100 });
+    // Libraries often hold the same song twice (a new title, a line split
+    // differently). Copies count as one: offered once, and not as a rival
+    // that keeps the song from ever being clear.
+    const distinct: Candidate[] = [];
+    for (const c of scored) {
+      if (!distinct.some((d) => this.copies(d.song, c.song))) distinct.push(c);
+      if (distinct.length === 3) break;
     }
-    return { song, slide, score: Math.round(best.s * 100) / 100, confident: false };
+    const candidates = distinct.slice(0, 3).map(round);
+    const best = scored[0];
+    const runnerUp = distinct[1]?.score ?? 0;
+
+    // Confident: enough matching phrases, and clearly ahead of any other
+    // song. With one song to choose from (locked), only the line is in
+    // question, so less is needed.
+    const locked = opts.only !== undefined;
+    const confident = locked ? best.score >= 0.6 : best.score >= CONFIDENT.score && best.score >= runnerUp * CONFIDENT.lead;
+    if (confident) return { ...round(best), confident, candidates };
+    if (inCurrent && inCurrent.score >= 0.6 && inCurrent.score >= best.score * 0.8) {
+      return { ...round(inCurrent), confident: true, candidates };
+    }
+    return { ...round(best), confident: false, candidates };
   }
+
+  /** Whether two songs are copies: most of the smaller one's words are in the other. */
+  private copies(a: number, b: number): boolean {
+    if (a === b) return true;
+    const [x, y] = [this.bags[a], this.bags[b]];
+    if (!x?.size || !y?.size) return false;
+    const [small, big] = x.size <= y.size ? [x, y] : [y, x];
+    // Very different sizes: one is a medley or a fragment, not a copy.
+    if (small.size < big.size * 0.5) return false;
+    let both = 0;
+    for (const w of small) if (big.has(w)) both++;
+    return both / small.size >= 0.75;
+  }
+
+  /** Of a slide and its twins (the same words again), the one nearest ahead of `from`. */
+  private nearest(song: number, slide: number, from: number): number {
+    const twins = this.twins[song]?.[slide] ?? [slide];
+    if (twins.length < 2) return slide;
+    return twins.find((t) => t >= from) ?? twins[twins.length - 1];
+  }
+
+  /**
+   * Whether the words just heard are the last line of this slide, so the
+   * next slide can go up a moment early and people read ahead of the singer.
+   * Only for slides of two lines or more, and only when the ending isn't
+   * also sung earlier in the slide.
+   */
+  atLastLine(song: number, slide: number, heard: string): boolean {
+    const lines = (this.songs[song]?.slides[slide]?.text ?? "")
+      .split("\n")
+      .map(words)
+      .filter((l) => l.length);
+    if (lines.length < 2) return false;
+    const tail = words(heard).slice(-3);
+    if (tail.length < 3) return false;
+    const has = (line: string[], key: (x: string) => string) => {
+      const t = tail.map(key).join(" ");
+      for (let i = 0; i + 2 < line.length; i++) if (line.slice(i, i + 3).map(key).join(" ") === t) return true;
+      return false;
+    };
+    const last = lines[lines.length - 1];
+    const earlier = lines.slice(0, -1).flat();
+    const same = (x: string) => x;
+    if (has(last, same)) return !has(earlier, same);
+    return has(last, soundKey) && !has(earlier, soundKey);
+  }
+}
+
+type Hit = { at: number; slide: number; weight: number };
+
+/**
+ * The best run of phrases through one song: heard in order, each on the
+ * same slide as the one before or a slide or two further on. Returns its
+ * score and the slide it ends on (where the singer is now).
+ */
+function bestRun(list: Hit[]): { score: number; slide: number } {
+  const hits = [...list].sort((a, b) => a.at - b.at);
+  const best = new Array<number>(hits.length);
+  let top = { score: 0, slide: 0, at: -1 };
+  for (let i = 0; i < hits.length; i++) {
+    let before = 0;
+    for (let j = 0; j < i; j++) {
+      const step = hits[i].slide - hits[j].slide;
+      if (step >= 0 && step <= 2 && best[j] > before) before = best[j];
+    }
+    best[i] = hits[i].weight + before;
+    // The highest run wins; between equal runs, the one heard last.
+    if (best[i] > top.score + 1e-9 || (Math.abs(best[i] - top.score) < 1e-9 && hits[i].at >= top.at)) {
+      top = { score: best[i], slide: hits[i].slide, at: hits[i].at };
+    }
+  }
+  return top;
 }

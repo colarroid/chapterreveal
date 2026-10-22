@@ -1,10 +1,11 @@
-import { ArrowLeft, BookOpen, Clock } from "lucide-react";
+import { ArrowLeft, BookOpen, Clock, Music } from "lucide-react";
 import Link from "next/link";
 import { PendingIcon } from "@/components/pending";
 import { Chip } from "@/components/ui";
 import { notFound } from "next/navigation";
 import { requireMembership, supabaseServer } from "@/lib/supabase/server";
 import { formatDuration } from "@/lib/format";
+import { DetectionCheck } from "./detection-check";
 import { ExportButton } from "./export";
 
 export const metadata = { title: "Service" };
@@ -22,13 +23,16 @@ interface Shown {
 
 export default async function ServicePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  await requireMembership();
+  const m = await requireMembership();
   const supabase = await supabaseServer();
 
-  const [{ data: service }, { data: segments }, { data: shown }] = await Promise.all([
+  const [{ data: service }, { data: segments }, { data: shown }, { data: songs }, { count: detections }] = await Promise.all([
     supabase.from("services").select("id, started_at, ended_at").eq("id", id).maybeSingle(),
     supabase.from("transcript_segments").select("seq, start_ms, text").eq("service_id", id).order("seq").limit(5000),
     supabase.from("verses_shown").select("id, label, translation, source, segment_seq, char_start, char_end, shown_at").eq("service_id", id).order("shown_at"),
+    // Before migrations 0024 and 0027 these tables are missing: no songs, no check.
+    supabase.from("songs_shown").select("id, song_id, title, shown_at").eq("service_id", id).order("shown_at"),
+    supabase.from("song_detections").select("id", { count: "exact", head: true }).eq("service_id", id).eq("kind", "heard"),
   ]);
   if (!service) notFound();
 
@@ -110,6 +114,26 @@ export default async function ServicePage({ params }: { params: Promise<{ id: st
             ))}
             {!shown?.length && <li className="text-muted">None.</li>}
           </ol>
+          {!!songs?.length && (
+            <>
+              <h2 className="mt-6 flex items-center gap-2 font-bold">
+                <Music size={15} className="text-muted" /> Songs sung
+              </h2>
+              <ol className="mt-3 space-y-2 text-sm">
+                {songs.map((s) => (
+                  <li key={s.id} className="flex items-baseline gap-3">
+                    <span className="w-14 shrink-0 font-mono text-xs text-faint tabular-nums">
+                      {new Date(s.shown_at).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}
+                    </span>
+                    <span className="min-w-0 font-bold">{s.title}</span>
+                  </li>
+                ))}
+              </ol>
+            </>
+          )}
+          {!!detections && m.role === "admin" && (
+            <DetectionCheck serviceId={service.id} churchId={m.churchId} titles={Object.fromEntries((songs ?? []).filter((s) => s.song_id).map((s) => [s.song_id, s.title]))} />
+          )}
         </aside>
       </div>
     </main>

@@ -1,0 +1,85 @@
+import { describe, expect, it } from "vitest";
+import { FollowEngine, type Heard } from "./engine";
+import { SongIndex } from "./matcher";
+
+// Made-up lyrics.
+const library = new SongIndex([
+  {
+    id: "river",
+    title: "River of Mercy",
+    slides: [
+      { text: "Down by the river of mercy\nI lay my burdens down" },
+      { text: "Every morning brand new\nYour kindness follows me" },
+      { label: "Chorus", text: "I love you Lord\nI lift my voice to you" },
+    ],
+  },
+  {
+    id: "mountain",
+    title: "Mountain Song",
+    slides: [
+      { text: "High on the mountain of glory\nThe trumpets sound for you" },
+      { label: "Chorus", text: "I love you Lord\nI lift my voice to you" },
+    ],
+  },
+]);
+
+function engine() {
+  const e = new FollowEngine();
+  e.library = library;
+  return e;
+}
+const heard = (recent: string, more: Partial<Heard> = {}): Heard => ({ recent, final: true, current: null, follow: true, now: 0, ...more });
+
+describe("FollowEngine", () => {
+  it("puts a clearly sung song up", () => {
+    const o = engine().hear(heard("down by the river of mercy i lay my burdens down"));
+    expect(o).toMatchObject({ decision: "auto", show: { id: "river", slide: 0, how: "auto" } });
+  });
+
+  it("only suggests while Follow is off", () => {
+    const o = engine().hear(heard("down by the river of mercy i lay my burdens down", { follow: false }));
+    expect(o.show).toBeNull();
+    expect(o.decision).toBe("suggest");
+    expect(o.suggestions[0]).toMatchObject({ id: "river", slide: 0 });
+  });
+
+  it("offers the songs a shared chorus could be, instead of guessing", () => {
+    const o = engine().hear(heard("i love you lord i lift my voice to you"));
+    expect(o.show).toBeNull();
+    expect(o.suggestions.map((s) => s.id).sort()).toEqual(["mountain", "river"]);
+  });
+
+  it("stays on the locked song through a chorus another song shares", () => {
+    const e = engine();
+    e.shown("mountain", null, 0);
+    const o = e.hear(heard("i love you lord i lift my voice to you", { current: { id: "mountain", slide: 0 }, now: 1000 }));
+    expect(o.show).toEqual({ id: "mountain", slide: 1, how: "auto" });
+  });
+
+  it("goes to the next slide at the last line, and doesn't come back for it", () => {
+    const e = engine();
+    e.shown("river", null, 0);
+    const at = { current: { id: "river", slide: 1 }, now: 1000 };
+    const early = e.hear(heard("every morning brand new your kindness follows me", at));
+    expect(early).toMatchObject({ decision: "early", show: { id: "river", slide: 2, how: "early" } });
+    // The singer is still finishing slide 2's line: the screen stays ahead.
+    const after = e.hear(heard("your kindness follows me", { current: { id: "river", slide: 2 }, now: 2000 }));
+    expect(after.show).toBeNull();
+  });
+
+  it("waits for a half-heard phrase to settle before moving", () => {
+    const e = engine();
+    const first = e.hear(heard("down by the river of mercy i lay my", { final: false }));
+    expect(first.show).toBeNull();
+    const again = e.hear(heard("down by the river of mercy i lay my burdens", { final: false }));
+    expect(again.show).toMatchObject({ id: "river", slide: 0 });
+  });
+
+  it("keeps songs outside the playlist to suggestions", () => {
+    const e = engine();
+    e.playlist = new SongIndex([library.songs[1]]);
+    const o = e.hear(heard("down by the river of mercy i lay my burdens down"));
+    expect(o.show).toBeNull();
+    expect(o.suggestions[0]?.id).toBe("river");
+  });
+});

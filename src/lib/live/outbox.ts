@@ -11,7 +11,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 // transcript lines, client_id for verses), so sending one twice after a
 // half-finished request is harmless.
 
-type Table = "transcript_segments" | "verses_shown" | "songs_shown";
+type Table = "transcript_segments" | "verses_shown" | "songs_shown" | "song_detections";
 
 interface Entry {
   table: Table | "services";
@@ -27,6 +27,7 @@ const CONFLICT: Record<Table, string> = {
   transcript_segments: "service_id,seq",
   verses_shown: "client_id",
   songs_shown: "client_id",
+  song_detections: "client_id",
 };
 const RETRY_MS = 5000;
 // A row the database keeps refusing (its service was deleted, say) is
