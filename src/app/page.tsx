@@ -1,4 +1,4 @@
-import { BookOpen, Cast, Check, ClipboardPaste, Globe, Languages, ListMusic, Music, PencilLine, Play, Sparkles } from "lucide-react";
+import { BookOpen, Cast, Check, ClipboardPaste, Globe, Languages, ListMusic, PencilLine, Play, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { Features } from "@/components/landing/features";
 import { heroBackground } from "@/components/landing/gradient";
@@ -22,13 +22,13 @@ const HEADLINE = [
 // The two halves of a service, side by side under the hero.
 const SIDES = [
   {
-    icon: BookOpen,
+    art: "/landing/side-scripture.webp",
     name: "Scripture",
     lead: "For the sermon",
     points: ["Picks every reference out of the sermon", "Switches translation when the preacher asks", "Search any verse and step through the chapter"],
   },
   {
-    icon: Music,
+    art: "/landing/side-worship.webp",
     name: "Worship",
     lead: "For praise and worship",
     points: ["Follows the singing, line by line", "Playlists for the songs you've planned", "Paste lyrics from anywhere"],
@@ -173,14 +173,23 @@ export default async function Home() {
 
         {/* One tool for the whole service. */}
         <div className="mb-12 grid gap-3 sm:grid-cols-2">
-          {SIDES.map(({ icon: Icon, name, lead, points }) => (
+          {SIDES.map(({ art, name, lead, points }, i) => (
             // The media-desk frame: a page-coloured 6 px frame round a grey card.
             <div key={name} className="rounded-3xl bg-bg p-1.5 shadow-[0_4px_30px_rgba(18,18,17,0.04)]">
               <div className="h-full rounded-2xl bg-surface p-6 sm:p-7">
               <div className="flex items-center gap-3">
-                <span className="grid h-11 w-11 place-items-center rounded-full bg-accent-fill text-on-accent">
-                  <Icon size={20} />
-                </span>
+                {/* 3D icon, floating like the steps above, a beat apart. */}
+                {/* eslint-disable-next-line @next/next/no-img-element -- a small fixed WebP, already sized */}
+                <img
+                  src={art}
+                  alt=""
+                  width={56}
+                  height={56}
+                  loading="lazy"
+                  decoding="async"
+                  className="step-float h-14 w-14 shrink-0 object-contain drop-shadow-[0_10px_12px_rgba(18,18,17,0.18)]"
+                  style={{ animationDelay: `${i * -2.4}s` }}
+                />
                 <div>
                   <h2 className="text-xl leading-tight font-bold">{name}</h2>
                   <p className="text-sm text-muted">{lead}</p>
