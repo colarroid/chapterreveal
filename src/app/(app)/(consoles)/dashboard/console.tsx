@@ -492,8 +492,11 @@ export function Console({ churchId, userId, screenToken, translationId, translat
 
   const [auto, setAuto] = useState(true);
   const [autoKey, setAutoKey] = useState<string | null>(null);
-  /** Last measured time from the words being spoken to the verse being sent to the screens. */
-  const [speechToScreen, setSpeechToScreen] = useState<number | null>(null);
+  /**
+   * Last measured time from the words being spoken to the verse being sent
+   * to the screens. Measured, not shown (kept off the control bar).
+   */
+  const speechToScreen = useRef<number | null>(null);
   const autoRef = useRef(auto);
   const recentAuto = useRef(new Map<string, number>());
   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -528,7 +531,7 @@ export function Console({ churchId, userId, screenToken, translationId, translat
     recentAuto.current.set(key, Date.now());
     showRefLatest.current(d.ref, "detected", { key, ref: d.ref, confidence: d.confidence, kind: d.kind, at: Date.now(), start: d.start, end: d.end });
     // Transcription lag, plus our own time (including any hold) up to the send.
-    if (liveRef.current) setSpeechToScreen(Math.round(lagMs + (performance.now() - heardAt)));
+    if (liveRef.current) speechToScreen.current = Math.round(lagMs + (performance.now() - heardAt));
     setAutoKey(key);
   }, []);
 
@@ -707,7 +710,7 @@ export function Console({ churchId, userId, screenToken, translationId, translat
     // the header. On narrow screens everything stacks and the page scrolls.
     <div className="flex flex-col gap-4 px-4 pb-4 lg:grid lg:h-[calc(100dvh-4rem)] lg:min-h-[660px] lg:grid-cols-[minmax(0,1fr)_300px] xl:grid-cols-[minmax(0,1fr)_340px] 2xl:grid-cols-[minmax(0,1fr)_400px]">
       <div className="flex min-h-0 flex-col gap-4">
-        <ControlBar live={live} auto={auto} onToggleAuto={() => setAuto((v) => !v)} speechToScreen={speechToScreen} />
+        <ControlBar live={live} auto={auto} onToggleAuto={() => setAuto((v) => !v)} />
   
         {warnings.length > 0 && (
           <div className="space-y-1">
@@ -1063,12 +1066,10 @@ function ControlBar({
   live,
   auto,
   onToggleAuto,
-  speechToScreen,
 }: {
   live: ReturnType<typeof useLiveService>;
   auto: boolean;
   onToggleAuto: () => void;
-  speechToScreen: number | null;
 }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -1113,13 +1114,6 @@ function ControlBar({
       )}
 
       <div className="ml-auto flex items-center gap-3">
-        {speechToScreen !== null && (
-          <span title="Last auto-shown verse: time from the words being spoken to the verse being sent to your screens">
-            <Chip tone={speechToScreen < 1000 ? "ok" : "warn"}>
-              <Timer size={13} /> {(speechToScreen / 1000).toFixed(2)} s
-            </Chip>
-          </span>
-        )}
         <button
           type="button"
           role="switch"
