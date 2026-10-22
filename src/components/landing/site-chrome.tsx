@@ -125,7 +125,7 @@ export function SiteFooter({ home = false }: { home?: boolean }) {
           <AskAi />
         </div>
         <p className="col-span-2 text-xs text-faint sm:col-span-4">
-          © {new Date().getFullYear()} {LEGAL.operator}. {APP_NAME} is a product of {LEGAL.operator}.
+          © {new Date().getFullYear()} {LEGAL.operator}
         </p>
       </div>
     </footer>
