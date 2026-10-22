@@ -23,7 +23,7 @@ const RISE = Array.from({ length: 24 }, (_, i) => {
 const FADE = Array.from({ length: 8 }, (_, i) => {
   const t = (i + 1) / 8;
   const page = 1 - (1 - t) ** 2.5;
-  return `color-mix(in srgb, var(--bg) ${(page * 100).toFixed(1)}%, #1ed760) ${at(PEAK + t * (100 - PEAK))}`;
+  return `color-mix(in srgb, var(--page, var(--bg)) ${(page * 100).toFixed(1)}%, #1ed760) ${at(PEAK + t * (100 - PEAK))}`;
 });
 
 export const HERO_GRADIENT = `linear-gradient(180deg, ${[...RISE, ...FADE].join(", ")})`;
@@ -35,7 +35,8 @@ export const HERO_GRADIENT = `linear-gradient(180deg, ${[...RISE, ...FADE].join(
  * peak just under its own headline.
  */
 export const heroBackground: CSSProperties = {
-  backgroundColor: "var(--bg)",
+  // A page can set --page for its own background (the home page is off-white).
+  backgroundColor: "var(--page, var(--bg))",
   backgroundImage: HERO_GRADIENT,
   backgroundSize: "100% var(--hero-h, 840px)",
   backgroundRepeat: "no-repeat",

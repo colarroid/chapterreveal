@@ -91,7 +91,7 @@ export default async function Home() {
   return (
     // The gradient sits behind the top of the page at a fixed height; its green
     // peak falls behind the step cards rising out of the hero.
-    <div className="min-h-dvh [--hero-h:860px] sm:[--hero-h:880px]" style={heroBackground}>
+    <div className="min-h-dvh [--hero-h:860px] [--page:#f7f7f6] sm:[--hero-h:880px]" style={heroBackground}>
       {/* Fixed text from this file only (no user input), so it can go in as is. */}
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(STRUCTURED_DATA) }} />
       <section className="relative">
