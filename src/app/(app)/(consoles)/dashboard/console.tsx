@@ -494,9 +494,9 @@ export function Console({ churchId, userId, screenToken, translationId, translat
   const [autoKey, setAutoKey] = useState<string | null>(null);
   /**
    * Last measured time from the words being spoken to the verse being sent
-   * to the screens. Measured, not shown (kept off the control bar).
+   * to the screens, shown on the preview beside LIVE.
    */
-  const speechToScreen = useRef<number | null>(null);
+  const [speechToScreen, setSpeechToScreen] = useState<number | null>(null);
   const autoRef = useRef(auto);
   const recentAuto = useRef(new Map<string, number>());
   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -531,7 +531,7 @@ export function Console({ churchId, userId, screenToken, translationId, translat
     recentAuto.current.set(key, Date.now());
     showRefLatest.current(d.ref, "detected", { key, ref: d.ref, confidence: d.confidence, kind: d.kind, at: Date.now(), start: d.start, end: d.end });
     // Transcription lag, plus our own time (including any hold) up to the send.
-    if (liveRef.current) speechToScreen.current = Math.round(lagMs + (performance.now() - heardAt));
+    if (liveRef.current) setSpeechToScreen(Math.round(lagMs + (performance.now() - heardAt)));
     setAutoKey(key);
   }, []);
 
@@ -804,12 +804,26 @@ export function Console({ churchId, userId, screenToken, translationId, translat
                       <span className="absolute inset-0 grid place-items-center text-xs font-semibold text-white/30">Screen is clear</span>
                     )}
                     {selectedSlide && (
-                      <span
-                        className={`absolute top-2 left-2 rounded px-1.5 py-0.5 text-[10px] font-bold tracking-wider uppercase ${
-                          onAir ? "bg-negative text-white" : "bg-white/15 text-white/80"
-                        }`}
-                      >
-                        {onAir ? "Live" : "Preview"}
+                      <span className="absolute top-2 left-2 flex items-center gap-1.5">
+                        <span
+                          className={`rounded px-1.5 py-0.5 text-[10px] font-bold tracking-wider uppercase ${
+                            onAir ? "bg-negative text-white" : "bg-white/15 text-white/80"
+                          }`}
+                        >
+                          {onAir ? "Live" : "Preview"}
+                        </span>
+                        {/* How fast the last auto-shown verse went up, from the words being spoken. */}
+                        {onAir && speechToScreen !== null && (
+                          <Tooltip label="Last auto-shown verse: time from the words being spoken to the screens" side="bottom">
+                            <span
+                              className={`inline-flex h-[19px] items-center gap-1 rounded bg-black/55 px-1.5 text-[10px] font-bold tabular-nums ring-1 ring-white/15 backdrop-blur-sm ${
+                                speechToScreen < 1000 ? "text-accent-fill" : "text-warning"
+                              }`}
+                            >
+                              <Timer size={11} /> {(speechToScreen / 1000).toFixed(2)} s
+                            </span>
+                          </Tooltip>
+                        )}
                       </span>
                     )}
                     {/* The take-down countdown: on this preview only, never on the projector. */}
@@ -1071,15 +1085,7 @@ function ControlBar({
   auto: boolean;
   onToggleAuto: () => void;
 }) {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (!live.startedAt) return;
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
-  }, [live.startedAt]);
-
-  const elapsed = live.startedAt ? Math.max(0, Math.floor((now - live.startedAt) / 1000)) : 0;
-  const clock = `${Math.floor(elapsed / 3600)}:${String(Math.floor((elapsed % 3600) / 60)).padStart(2, "0")}:${String(elapsed % 60).padStart(2, "0")}`;
+  // The service's running time is recorded (History), not shown here.
 
   return (
     <div className="@container flex flex-wrap items-center gap-x-4 gap-y-3 card px-4 py-3">
@@ -1129,7 +1135,7 @@ function ControlBar({
         {live.phase === "live" &&
           (live.status === "live" ? (
             <Chip tone="live">
-              <span className="h-2 w-2 animate-pulse rounded-full bg-negative" /> Live <span className="font-mono font-semibold tabular-nums">{clock}</span>
+              <span className="h-2 w-2 animate-pulse rounded-full bg-negative" /> Live
             </Chip>
           ) : (
             <Chip tone="warn">
