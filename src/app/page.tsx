@@ -153,7 +153,7 @@ export default async function Home() {
                     height={160}
                     loading="lazy"
                     decoding="async"
-                    className="step-float h-28 w-28 object-contain drop-shadow-[0_18px_22px_rgba(18,18,17,0.18)] md:h-[148px] md:w-[148px]"
+                    className="step-float h-[90px] w-[90px] object-contain drop-shadow-[0_18px_22px_rgba(18,18,17,0.18)] md:h-[118px] md:w-[118px]"
                     style={{ animationDelay: `${i * -1.6}s` }}
                   />
                 </div>
