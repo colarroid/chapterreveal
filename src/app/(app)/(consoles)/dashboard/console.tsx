@@ -26,7 +26,7 @@ import {
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { confirmDialog } from "@/components/confirm";
-import { askToGoLive } from "@/lib/live/present-check";
+import { askToGoLive, mayProjectHere } from "@/lib/live/present-check";
 import { DisplayQuick } from "@/components/display-quick";
 import { Dropdown } from "@/components/dropdown";
 import { SlideView } from "@/components/slide-view";
@@ -38,7 +38,7 @@ import { isReading, versePhrases, type TakeDown } from "@/lib/live/take-down";
 import { lastSpokenTranslation, matchSpokenTranslation } from "@/lib/scripture/spoken-translations";
 import { findTranslation, starredFirst, type TranslationInfo } from "@/lib/scripture/translations";
 import { closeProjector, fillProjectorScreen, presentOnProjector, useProjectorOpen } from "@/lib/live/present";
-import { CONSOLE_CHANNEL, SCREEN_TAKEN, ScreenSender, type ConsoleMessage } from "@/lib/live/screen";
+import { CONSOLE_CHANNEL, SCREEN_TAKEN, ScreenSender, TAKEN_ELSEWHERE, type ConsoleMessage } from "@/lib/live/screen";
 import { buildSlides, loadTranslation, shapeOf, stepVerse, versesFor, type Slide, type Translation } from "@/lib/scripture/bible";
 import { formatRef, parseSearch, refKey, type Detection, type VerseRef } from "@/lib/scripture/parser";
 import { supabaseBrowser } from "@/lib/supabase/client";
@@ -221,9 +221,11 @@ export function Console({ churchId, userId, screenToken, translationId, translat
   // one's Live goes off, so it can't knock that off again.
   useEffect(() => {
     const onTaken = (e: Event) => {
-      if ((e as CustomEvent).detail === screen.current) return;
+      const by = (e as CustomEvent).detail;
+      if (by === screen.current) return;
       liveRef.current = false;
       setIsLive(false);
+      setElsewhere(by === TAKEN_ELSEWHERE);
     };
     window.addEventListener(SCREEN_TAKEN, onTaken);
     return () => window.removeEventListener(SCREEN_TAKEN, onTaken);
@@ -247,7 +249,12 @@ export function Console({ churchId, userId, screenToken, translationId, translat
   const [presentBlocked, setPresentBlocked] = useState(false);
   async function present() {
     if (!outputUrl) return;
-    if (!liveRef.current && (await askToGoLive("verses"))) goLive(true);
+    if (!liveRef.current) {
+      // Another computer projecting: ask about that; Cancel still opens the
+      // projector, showing what they have up.
+      if (screen.current?.otherOnScreen()) await liveOn();
+      else if (await askToGoLive("verses")) goLive(true);
+    }
     setPresenting(true);
     setPresentBlocked(false);
     const result = await presentOnProjector(outputUrl);
@@ -379,6 +386,18 @@ export function Console({ churchId, userId, screenToken, translationId, translat
     },
     [logShown, markCleared, wentUp],
   );
+  // Going live asks first when another computer (or tab) has something on
+  // the screen (lib/live/present-check.ts); going off never asks.
+  const [elsewhere, setElsewhere] = useState(false);
+  const liveOn = useCallback(async () => {
+    if (!(await mayProjectHere(screen.current))) return;
+    setElsewhere(false);
+    goLive(true);
+  }, [goLive]);
+  const toggleLive = useCallback(() => {
+    if (liveRef.current) goLive(false);
+    else void liveOn();
+  }, [goLive, liveOn]);
   const clear = useCallback(() => {
     if (!liveRef.current) return;
     void screen.current?.clearWords();
@@ -658,7 +677,7 @@ export function Console({ churchId, userId, screenToken, translationId, translat
       }
       if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key === "l" || e.key === "L") {
-        goLive(!liveRef.current);
+        toggleLive();
       } else if (e.key === "Enter" && clearedRef.current && selectionRef.current) {
         // Words cleared: Enter puts the same verse back up.
         e.preventDefault();
@@ -682,7 +701,7 @@ export function Console({ churchId, userId, screenToken, translationId, translat
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [active, clear, step, showRef, live.suggestions, goLive, typeDigit, putUp, armed, kept]);
+  }, [active, clear, step, showRef, live.suggestions, goLive, typeDigit, putUp, armed, kept, toggleLive]);
 
   // ---- Render -------------------------------------------------------------
 
@@ -767,14 +786,14 @@ export function Console({ churchId, userId, screenToken, translationId, translat
                   {cleared && <span className="font-semibold text-faint">· words cleared, Enter to show</span>}
                 </span>
               ) : (
-                <span className="min-w-0 truncate text-xs font-bold text-faint">Not live · screen blank</span>
+                <span className="min-w-0 truncate text-xs font-bold text-faint">{elsewhere ? "Not live · another computer is projecting" : "Not live · screen blank"}</span>
               )}
               <div className="ml-auto flex items-center gap-2">
                 <button
                   type="button"
                   role="switch"
                   aria-checked={isLive}
-                  onClick={() => goLive(!isLive)}
+                  onClick={toggleLive}
                   title={isLive ? "Live: selected verses go to the screen. Esc clears the words and keeps the background; L blanks the screen." : "Not live: verses only preview here. Press L to go live."}
                   className="inline-flex h-9 items-center gap-2 rounded-full bg-surface-2 pr-2 pl-3 text-sm font-semibold transition hover:bg-surface-3 active:scale-[0.97]"
                 >

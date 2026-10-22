@@ -49,6 +49,8 @@ export function OutputScreen({
   const [lost, setLost] = useState(false);
   const [replaced, setReplaced] = useState(false);
   const latest = useRef(0);
+  // Updates already shown, so a repeat (or the saved copy of one) is ignored.
+  const applied = useRef(new Set<string>());
   const replacedRef = useRef(false);
 
   // Opened by "Present on projector": go fullscreen, by the console's request
@@ -107,11 +109,17 @@ export function OutputScreen({
   useEffect(() => {
     const supabase = supabaseBrowser();
 
-    const apply = (p: ScreenPayload | null) => {
+    // live: straight from a console, applied in the order they arrive (two
+    // laptops' clocks can disagree by seconds). Otherwise the saved copy,
+    // read on load and every 15 s: only when it's new and not older than
+    // what's up, so a save running behind never rolls the screen back.
+    const apply = (p: ScreenPayload | null, live = true) => {
       // A replaced link stays blank, even if an old console still sends to it.
       if (replacedRef.current) return;
-      if (!p || p.at <= latest.current) return;
-      latest.current = p.at;
+      if (!p || applied.current.has(p.id) || (!live && p.at <= latest.current)) return;
+      applied.current.add(p.id);
+      if (applied.current.size > 200) applied.current.delete(applied.current.values().next().value!);
+      latest.current = Math.max(latest.current, p.at);
       const kind = p.slide ? (p.slide.kind === "song" ? "song" : p.slide.kind === "text" || p.slide.kind === "image" || p.slide.kind === "video" ? "slide" : "scripture") : null;
       if (p.slide && ((only && kind !== only) || (noSlides && kind === "slide"))) {
         // The other kind went up: this output goes blank.
@@ -141,7 +149,7 @@ export function OutputScreen({
       if (error) {
         // Before migration 0004 there is no screen_state: use the older call.
         const old = await supabase.rpc("get_screen", { p_token: token });
-        if (!old.error) apply(old.data as ScreenPayload | null);
+        if (!old.error) apply(old.data as ScreenPayload | null, false);
         return;
       }
       // No row: an admin replaced this link. Go blank so a leaked or old link
@@ -154,7 +162,7 @@ export function OutputScreen({
       }
       replacedRef.current = false;
       setReplaced(false);
-      apply((data as { payload: ScreenPayload | null }).payload);
+      apply((data as { payload: ScreenPayload | null }).payload, false);
     };
 
     // Private channel: anyone may receive (this page isn't signed in), only

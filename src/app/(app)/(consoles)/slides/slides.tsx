@@ -6,9 +6,9 @@ import { confirmDialog } from "@/components/confirm";
 import { SlideView } from "@/components/slide-view";
 import { Button, Chip, IconButton, Kbd, Notice } from "@/components/ui";
 import { cleanDisplay, type DisplaySettings } from "@/lib/display/theme";
-import { askToGoLive } from "@/lib/live/present-check";
+import { askToGoLive, mayProjectHere } from "@/lib/live/present-check";
 import { closeProjector, fillProjectorScreen, presentOnProjector, useProjectorOpen } from "@/lib/live/present";
-import { CONSOLE_CHANNEL, SCREEN_TAKEN, ScreenSender, type ConsoleMessage } from "@/lib/live/screen";
+import { CONSOLE_CHANNEL, SCREEN_TAKEN, ScreenSender, TAKEN_ELSEWHERE, type ConsoleMessage } from "@/lib/live/screen";
 import { limitText, PLAN_LIMITS, planName, type Plan } from "@/lib/plans";
 import type { Slide } from "@/lib/scripture/bible";
 import { supabaseBrowser } from "@/lib/supabase/client";
@@ -85,6 +85,8 @@ export function Slides({
   // screen; off, slides only preview here and the screen is blank. Starts
   // off; L toggles it, Esc turns it off.
   const [isLive, setIsLive] = useState(false);
+  // Live went off because another computer took the screen.
+  const [elsewhere, setElsewhere] = useState(false);
   const liveRef = useRef(false);
   const onAir = isLive ? selected : null;
   const [editing, setEditing] = useState<SavedSlide | "new" | null>(null);
@@ -122,9 +124,11 @@ export function Slides({
   // one's Live goes off, so it can't knock that off again.
   useEffect(() => {
     const onTaken = (e: Event) => {
-      if ((e as CustomEvent).detail === screen.current) return;
+      const by = (e as CustomEvent).detail;
+      if (by === screen.current) return;
       liveRef.current = false;
       setIsLive(false);
+      setElsewhere(by === TAKEN_ELSEWHERE);
     };
     window.addEventListener(SCREEN_TAKEN, onTaken);
     return () => window.removeEventListener(SCREEN_TAKEN, onTaken);
@@ -148,6 +152,17 @@ export function Slides({
     const cur = currentRef.current;
     void screen.current?.show(on && cur ? toSlide(cur) : null);
   }, []);
+  // Going live asks first when another computer (or tab) has something on
+  // the screen (lib/live/present-check.ts); going off never asks.
+  const liveOn = useCallback(async () => {
+    if (!(await mayProjectHere(screen.current))) return;
+    setElsewhere(false);
+    goLive(true);
+  }, [goLive]);
+  const toggleLive = useCallback(() => {
+    if (liveRef.current) goLive(false);
+    else void liveOn();
+  }, [goLive, liveOn]);
 
   const [outputUrl, setOutputUrl] = useState("");
   useEffect(() => setOutputUrl(token ? `${location.origin}/screen/${token}` : ""), [token]);
@@ -155,7 +170,10 @@ export function Slides({
   const [projectorOpen, syncProjector, projectorFull] = useProjectorOpen();
   async function present() {
     if (!outputUrl) return;
-    if (!liveRef.current && (await askToGoLive("slides"))) goLive(true);
+    if (!liveRef.current) {
+      if (screen.current?.otherOnScreen()) await liveOn();
+      else if (await askToGoLive("slides")) goLive(true);
+    }
     setPresenting(true);
     await presentOnProjector(outputUrl);
     setPresenting(false);
@@ -181,14 +199,14 @@ export function Slides({
         if (prev) select(prev);
       } else if (e.key === "l" || e.key === "L") {
         e.preventDefault();
-        goLive(!liveRef.current);
+        toggleLive();
       } else if (e.key === "Escape") {
         goLive(false);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [active, slides, selected, editing, select, goLive]);
+  }, [active, slides, selected, editing, select, goLive, toggleLive]);
 
   // ---- Saving -----------------------------------------------------------------
   const nextPosition = () => (slides.length ? Math.max(...slides.map((s) => s.position)) + 1 : 0);
@@ -371,13 +389,13 @@ export function Slides({
               <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-negative" /> Live
             </span>
           ) : (
-            <span className="text-xs font-bold text-faint">Not live · screen blank</span>
+            <span className="text-xs font-bold text-faint">{elsewhere ? "Not live · another computer is projecting" : "Not live · screen blank"}</span>
           )}
           <button
             type="button"
             role="switch"
             aria-checked={isLive}
-            onClick={() => goLive(!isLive)}
+            onClick={toggleLive}
             title={isLive ? "Live: the selected slide is on screen. Press L or Esc to blank it." : "Not live: slides only preview here. Press L to go live."}
             className="inline-flex h-9 items-center gap-2 rounded-full bg-surface-2 pr-2 pl-3 text-sm font-semibold transition hover:bg-surface-3"
           >
@@ -603,7 +621,7 @@ export function Slides({
                 onClick={() => select(s)}
                 onDoubleClick={() => {
                   select(s);
-                  if (!liveRef.current) goLive(true);
+                  if (!liveRef.current) void liveOn();
                 }}
                 title="Drag to reorder. Double-click to show."
                 className={`flex w-full cursor-grab items-center gap-3 rounded-lg p-2 text-left transition active:cursor-grabbing ${s.id === selected ? "bg-surface-3" : "hover:bg-surface-2"}`}

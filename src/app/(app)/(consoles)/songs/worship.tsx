@@ -24,14 +24,14 @@ import {
 import { useRouter } from "next/navigation";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { confirmDialog } from "@/components/confirm";
-import { askToGoLive } from "@/lib/live/present-check";
+import { askToGoLive, mayProjectHere } from "@/lib/live/present-check";
 import { DisplayQuick } from "@/components/display-quick";
 import { Dropdown } from "@/components/dropdown";
 import { SlideView } from "@/components/slide-view";
 import { cleanDisplay, type DisplaySettings } from "@/lib/display/theme";
 import { Button, Chip, IconButton, Kbd } from "@/components/ui";
 import { closeProjector, fillProjectorScreen, presentOnProjector, useProjectorOpen } from "@/lib/live/present";
-import { CONSOLE_CHANNEL, SCREEN_TAKEN, ScreenSender, type ConsoleMessage } from "@/lib/live/screen";
+import { CONSOLE_CHANNEL, SCREEN_TAKEN, ScreenSender, TAKEN_ELSEWHERE, type ConsoleMessage } from "@/lib/live/screen";
 import type { Slide } from "@/lib/scripture/bible";
 import { songKeyterms } from "@/lib/songs/keyterms";
 import { outbox } from "@/lib/live/outbox";
@@ -274,9 +274,11 @@ export function Worship({
   // one's Live goes off, so it can't knock that off again.
   useEffect(() => {
     const onTaken = (e: Event) => {
-      if ((e as CustomEvent).detail === screen.current) return;
+      const by = (e as CustomEvent).detail;
+      if (by === screen.current) return;
       liveRef.current = false;
       setIsLive(false);
+      setElsewhere(by === TAKEN_ELSEWHERE);
     };
     window.addEventListener(SCREEN_TAKEN, onTaken);
     return () => window.removeEventListener(SCREEN_TAKEN, onTaken);
@@ -297,7 +299,10 @@ export function Worship({
   const [presenting, setPresenting] = useState(false);
   async function present() {
     if (!outputUrl) return;
-    if (!liveRef.current && (await askToGoLive("lyrics"))) goLive(true);
+    if (!liveRef.current) {
+      if (screen.current?.otherOnScreen()) await liveOn();
+      else if (await askToGoLive("lyrics")) goLive(true);
+    }
     setPresenting(true);
     await presentOnProjector(outputUrl);
     setPresenting(false);
@@ -332,6 +337,18 @@ export function Worship({
     const song = cur ? songById(cur.id) : null;
     void screen.current?.show(on && song && cur ? toSlide(song, cur.slide) : null);
   }, [songById, markCleared]);
+  // Going live asks first when another computer (or tab) has something on
+  // the screen (lib/live/present-check.ts); going off never asks.
+  const [elsewhere, setElsewhere] = useState(false);
+  const liveOn = useCallback(async () => {
+    if (!(await mayProjectHere(screen.current))) return;
+    setElsewhere(false);
+    goLive(true);
+  }, [goLive]);
+  const toggleLive = useCallback(() => {
+    if (liveRef.current) goLive(false);
+    else void liveOn();
+  }, [goLive, liveOn]);
   const clear = useCallback(() => {
     if (!liveRef.current) return;
     void screen.current?.clearWords("song");
@@ -462,7 +479,7 @@ export function Worship({
       } else if (e.key === "ArrowLeft" || e.key === "PageUp") {
         e.preventDefault();
         step(-1);
-      } else if (e.key === "l" || e.key === "L") goLive(!liveRef.current);
+      } else if (e.key === "l" || e.key === "L") toggleLive();
       else if (e.key === "Escape") clear();
       else if (e.key === "Enter" && clearedRef.current && currentRef.current) {
         e.preventDefault();
@@ -472,7 +489,7 @@ export function Worship({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [active, step, goLive, clear, putUp]);
+  }, [active, step, goLive, clear, putUp, toggleLive]);
 
   // ---- Library and editing --------------------------------------------------
   const [query, setQuery] = useState("");
@@ -721,13 +738,13 @@ export function Worship({
                   {cleared && <span className="font-semibold text-faint">· words cleared, Enter to show</span>}
                 </span>
               ) : (
-                <span className="text-xs font-bold text-faint">Not live · screen blank</span>
+                <span className="text-xs font-bold text-faint">{elsewhere ? "Not live · another computer is projecting" : "Not live · screen blank"}</span>
               )}
               <button
                 type="button"
                 role="switch"
                 aria-checked={isLive}
-                onClick={() => goLive(!isLive)}
+                onClick={toggleLive}
                 className="ml-auto inline-flex h-9 items-center gap-2 rounded-full bg-surface-2 pr-2 pl-3 text-sm font-semibold transition hover:bg-surface-3"
               >
                 Live
