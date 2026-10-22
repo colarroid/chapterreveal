@@ -173,12 +173,12 @@ export default async function Home() {
 
         {/* One tool for the whole service. */}
         <div className="mb-12 grid gap-3 sm:grid-cols-2">
-          {SIDES.map(({ art, name, lead, points }, i) => (
+          {SIDES.map(({ art, name, lead, points }) => (
             // The media-desk frame: a page-coloured 6 px frame round a grey card.
             <div key={name} className="rounded-3xl bg-bg p-1.5 shadow-[0_4px_30px_rgba(18,18,17,0.04)]">
               <div className="h-full rounded-2xl bg-surface p-6 sm:p-7">
               <div className="flex items-center gap-3">
-                {/* 3D icon, floating like the steps above, a beat apart. */}
+                {/* 3D icon, still (only the steps above float). */}
                 {/* eslint-disable-next-line @next/next/no-img-element -- a small fixed WebP, already sized */}
                 <img
                   src={art}
@@ -187,8 +187,7 @@ export default async function Home() {
                   height={56}
                   loading="lazy"
                   decoding="async"
-                  className="step-float h-14 w-14 shrink-0 object-contain drop-shadow-[0_10px_12px_rgba(18,18,17,0.18)]"
-                  style={{ animationDelay: `${i * -2.4}s` }}
+                  className="h-14 w-14 shrink-0 object-contain drop-shadow-[0_10px_12px_rgba(18,18,17,0.18)]"
                 />
                 <div>
                   <h2 className="text-xl leading-tight font-bold">{name}</h2>
