@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ThemeToggle } from "@/components/theme";
 import { Logo } from "@/components/ui";
+import { AskAi } from "./ask-ai";
 import { LinkPending } from "./link-pending";
 import { APP_NAME, LEGAL } from "@/lib/brand";
 
@@ -118,6 +119,10 @@ export function SiteFooter({ home = false }: { home?: boolean }) {
               </a>
             </li>
           </ul>
+        </div>
+        {/* Between dividers, as on gettakecontrol.app. */}
+        <div className="col-span-2 border-y border-line py-[30px] sm:col-span-4">
+          <AskAi />
         </div>
         <p className="col-span-2 text-xs text-faint sm:col-span-4">
           © {new Date().getFullYear()} {LEGAL.operator}. {APP_NAME} is a product of {LEGAL.operator}.
