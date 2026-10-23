@@ -48,7 +48,7 @@ const SECTION: [RegExp, string][] = [
 ];
 
 // "[Chorus: Artist]", "Verse 2:", "(Bridge)", "CHORUS x2", "Repeat chorus"
-export function heading(line: string): { label: string; repeatOf?: string } | null {
+function heading(line: string): { label: string; repeatOf?: string } | null {
   let t = line.trim();
   const repeat = /^repeat\s+/i.test(t) || /\brepeat\)?\s*$/i.test(t);
   t = t
@@ -169,11 +169,5 @@ export function parsePastedLyrics(raw: string, perSlide = 2): PastedSong {
   }
 
   return { title, author, slides, dropped };
-}
-
-/** Whether pasted text looks like a song from the web rather than already-arranged slides. */
-export function looksPasted(text: string): boolean {
-  const lines = text.split(/\r?\n/).map((l) => l.trim());
-  return lines.some((l) => JUNK.some((re) => re.test(l)) || (!/^\[[^\]]+\]$/.test(l) && heading(l) !== null) || /\blyrics$/i.test(l));
 }
 

@@ -166,9 +166,10 @@ export class SongIndex {
   /**
    * The slide that best matches what was just sung. `heard` is the recent
    * transcript (the last couple of lines are used); `current` is what is on
-   * screen now, if anything.
+   * screen now, if anything, and `next` the slide that follows it in the
+   * order the church sings the song.
    */
-  match(heard: string, current?: { song: number; slide: number } | null, opts: MatchOptions = {}): SongMatch | null {
+  match(heard: string, current?: { song: number; slide: number; next?: number } | null, opts: MatchOptions = {}): SongMatch | null {
     const w = words(heard).slice(-WINDOW);
     if (w.length < 3) return null;
 
@@ -207,7 +208,7 @@ export class SongIndex {
         slide = this.nearest(song, slide, current.slide);
         s *= 1.5;
         const ahead = slide - current.slide;
-        if (ahead === 0 || ahead === 1) s *= 1.25;
+        if (ahead === 0 || (current.next === undefined ? ahead === 1 : slide === current.next)) s *= 1.25;
         // A weaker match is enough to move within the song on screen.
         if (slide >= current.slide - 1 && slide <= current.slide + 3) inCurrent = { song, slide, score: s, reach: run.reach };
       }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { looksPasted, parsePastedLyrics } from "./paste";
+import { parsePastedLyrics } from "./paste";
 
 // Shaped like a copy from a lyrics site; the words are made up.
 const FROM_SITE = `12 Contributors
@@ -70,10 +70,5 @@ describe("pasted lyrics", () => {
   it("keeps plain lyrics as they are, splitting on blank lines", () => {
     const s = parsePastedLyrics("Line one\nLine two\n\nLine three").slides;
     expect(s).toEqual([{ text: "Line one\nLine two" }, { text: "Line three" }]);
-  });
-
-  it("tells pasted web lyrics from arranged slides", () => {
-    expect(looksPasted(FROM_SITE)).toBe(true);
-    expect(looksPasted("[Chorus]\nLine one\nLine two")).toBe(false);
   });
 });

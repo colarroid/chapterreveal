@@ -18,15 +18,6 @@ export interface Song {
 }
 
 /** What the library list needs; the lyrics load when a song is opened. */
-export interface SongSummary {
-  id: string;
-  title: string;
-  author: string;
-  firstLine: string;
-}
-
-export const LABELS = ["Verse", "Chorus", "Pre-chorus", "Bridge", "Tag", "Intro", "Outro", "Ending"];
-
 /** All the lyrics as one string, for searching by any line. */
 export function songBody(slides: SongSlide[]): string {
   return slides.map((s) => s.text).join("\n");
@@ -70,20 +61,3 @@ export function textToSlides(text: string): SongSlide[] {
     .filter((s) => s.text);
 }
 
-/**
- * Joins runs of one-line slides into two-line slides, within the same part
- * of the song. VideoPsalm songbooks often have one line per slide.
- */
-export function pairSingleLines(slides: SongSlide[]): SongSlide[] {
-  const out: (SongSlide & { paired?: boolean })[] = [];
-  for (const s of slides) {
-    const prev = out[out.length - 1];
-    const single = !s.text.includes("\n");
-    // A labelled slide starts a new part, so it never joins the one before.
-    if (single && !s.label && prev && !prev.paired && !prev.text.includes("\n")) {
-      prev.text = `${prev.text}\n${s.text}`;
-      prev.paired = true;
-    } else out.push({ ...s });
-  }
-  return out.map(({ label, text }) => (label ? { label, text } : { text }));
-}

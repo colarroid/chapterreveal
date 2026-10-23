@@ -5,6 +5,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ExternalLink,
+  ListOrdered,
   LoaderCircle,
   Lock as LockIcon,
   LockOpen,
@@ -39,6 +40,7 @@ import { songKeyterms } from "@/lib/songs/keyterms";
 import { outbox } from "@/lib/live/outbox";
 import { FollowEngine, usageLift, type Suggested } from "@/lib/songs/engine";
 import { SongIndex } from "@/lib/songs/matcher";
+import { cleanOrder, learnOrder, positionOf, writtenOrder, type Order, type OrderSource } from "@/lib/songs/order";
 import { fetchAllSongs, keepSongs, songsAreFresh, songsInMemory, storedSongs, type FullSong } from "@/lib/songs/store";
 import { firstLine, songBody } from "@/lib/songs/songs";
 import { supabaseBrowser } from "@/lib/supabase/client";
@@ -46,6 +48,7 @@ import { EndServiceButton, LevelMeter } from "../dashboard/console";
 import { useLiveService } from "../dashboard/use-live-service";
 import { useConsoleActive } from "../active";
 import { SwitchTrack } from "@/components/motion";
+import { ArrangeOrder } from "./arrange";
 import { SetlistPanel, type Setlist } from "./setlist";
 import { SongEditor, type SongFields } from "./song-editor";
 
@@ -65,6 +68,13 @@ const FILTERS: { value: LibraryFilter; label: string; empty: string }[] = [
 ];
 const FILTER_KEY = "scripture.songFilter";
 const SETLIST_KEY = "scripture.setlist";
+
+/** The slide selected, and where it is in the song's order. */
+interface Current {
+  id: string;
+  slide: number;
+  pos?: number;
+}
 
 /** What put a slide on screen, for the detection log. */
 type ShownHow = "auto" | "early" | "suggestion" | "operator";
@@ -211,7 +221,8 @@ export function Worship({
   );
 
   // ---- What's selected and what's on screen --------------------------------
-  const [current, setCurrent] = useState<{ id: string; slide: number } | null>(null);
+  // `pos`: where in the song's order the slide is (a chorus comes up more than once).
+  const [current, setCurrent] = useState<Current | null>(null);
   const currentRef = useRef(current);
   const [isLive, setIsLive] = useState(false);
   const liveRef = useRef(false);
@@ -256,6 +267,101 @@ export function Worship({
     if (liveRef.current && cur?.id === songId && cur.slide === index && song) void screen.current?.show(toSlide(song, index));
   }, [songById]);
   const selectedSlide = currentSong && current ? toSlide(currentSong, current.slide) : null;
+
+  // ---- The order songs are sung in ------------------------------------------
+  // This church's order for a song (learned in a service, or arranged by
+  // hand), else the one most churches use for a shared song, else as
+  // written (lib/songs/order.ts, migration 0028).
+  const [orders, setOrders] = useState(new Map<string, { slides: Order; source: "sung" | "arranged" }>());
+  const [common, setCommon] = useState(new Map<string, { slides: Order; churches: number }>());
+  const [asWritten, setAsWritten] = useState(false);
+  // Arranging the open song by hand (./arrange.tsx); the console's keys rest meanwhile.
+  const [arranging, setArranging] = useState(false);
+  const arrangingRef = useRef(arranging);
+  useEffect(() => {
+    arrangingRef.current = arranging;
+  }, [arranging]);
+  useEffect(() => {
+    const supabase = supabaseBrowser();
+    // Before migration 0028 neither exists: songs stay as written.
+    void supabase
+      .from("song_orders")
+      .select("song_id, slides, source")
+      .then(({ data }) => setOrders(new Map((data ?? []).map((r) => [r.song_id as string, { slides: r.slides as Order, source: r.source as "sung" | "arranged" }]))));
+    void supabase
+      .rpc("common_song_orders")
+      .then(({ data }) =>
+        setCommon(new Map(((data ?? []) as { song_id: string; slides: Order; churches: number }[]).map((r) => [r.song_id, { slides: r.slides, churches: r.churches }]))),
+      );
+  }, [churchId]);
+  const orderOf = useCallback(
+    (song: { id: string; slides: unknown[] } | null): { order: Order; source: OrderSource; churches?: number } => {
+      if (!song) return { order: [], source: "written" };
+      const n = song.slides.length;
+      if (!asWritten) {
+        const own = orders.get(song.id);
+        const mine = own && cleanOrder(own.slides, n);
+        if (mine) return { order: mine, source: own.source };
+        const c = common.get(song.id);
+        const theirs = c && cleanOrder(c.slides, n);
+        if (theirs) return { order: theirs, source: "common", churches: c.churches };
+      }
+      return { order: writtenOrder(n), source: "written" };
+    },
+    [orders, common, asWritten],
+  );
+  const orderOfRef = useRef(orderOf);
+  useEffect(() => {
+    orderOfRef.current = orderOf;
+  }, [orderOf]);
+  /** A song opened at the start of its order. */
+  const startOf = useCallback((id: string): Current => {
+    const order = orderOfRef.current(songById(id)).order;
+    return { id, slide: order[0] ?? 0, pos: 0 };
+  }, [songById]);
+  /** The slide after this one in the song's order, if any. */
+  const nextOf = useCallback((cur: Current): number | undefined => {
+    const order = orderOfRef.current(songById(cur.id)).order;
+    return order[(cur.pos ?? positionOf(order, cur.slide)) + 1];
+  }, [songById]);
+  const currentOrder = orderOf(currentSong);
+  const openId = current?.id;
+  useEffect(() => setArranging(false), [openId]);
+
+  /** Keeps this church's order for a song (null: back to the written order). */
+  const saveOrder = useCallback(
+    async (songId: string, slides: Order | null, source: "sung" | "arranged") => {
+      if (!/^[0-9a-f-]{36}$/i.test(songId)) return;
+      setOrders((m) => {
+        const next = new Map(m);
+        if (slides) next.set(songId, { slides, source });
+        else next.delete(songId);
+        return next;
+      });
+      const table = supabaseBrowser().from("song_orders");
+      if (slides) await table.upsert({ church_id: churchId, song_id: songId, slides, source, updated_by: userId, updated_at: new Date().toISOString() });
+      else await table.delete().eq("church_id", churchId).eq("song_id", songId);
+    },
+    [churchId, userId],
+  );
+  const ordersRef = useRef(orders);
+  useEffect(() => {
+    ordersRef.current = orders;
+  }, [orders]);
+
+  // What went on screen during a service, song by song: when a song is
+  // finished, the order it was sung in is kept (unless arranged by hand).
+  const path = useRef<{ id: string; steps: { slide: number; at: number }[] } | null>(null);
+  const serviceRef = useRef<string | null>(null);
+  const finishSong = useCallback(() => {
+    const p = path.current;
+    path.current = null;
+    if (!p || !serviceRef.current) return;
+    const learned = learnOrder(p.steps, Date.now());
+    const own = ordersRef.current.get(p.id);
+    if (!learned || own?.source === "arranged" || (own && own.slides.join() === learned.join())) return;
+    void saveOrder(p.id, learned, "sung");
+  }, [saveOrder]);
 
   const [token, setToken] = useState(screenToken);
   const [display, setDisplay] = useState(initialDisplay);
@@ -359,22 +465,33 @@ export function Worship({
    * what put it there, for the detection log. A new song is locked (see
    * lib/songs/follow.ts), so following stays on it.
    */
-  const putUp = useCallback((id: string, slide: number, how: ShownHow = "operator") => {
+  const putUp = useCallback((id: string, slide: number, how: ShownHow = "operator", pos?: number) => {
     const song = songById(id);
     if (!song) return;
     const i = Math.max(0, Math.min(slide, song.slides.length - 1));
     const before = currentRef.current;
+    // Where it is in the song's order: as given, the same place if it's the
+    // same slide again, else the next place it comes.
+    const order = orderOfRef.current(song).order;
+    const at =
+      pos ?? (before?.id === id && before.slide === i && how !== "early" ? (before.pos ?? positionOf(order, i)) : positionOf(order, i, before?.id === id ? (before.pos ?? -1) : -1));
     if (liveRef.current) {
       void screen.current?.show(toSlide(song, i));
       markCleared(false);
       logDetection.current?.({ kind: "shown", decision: how, song_id: id, slide: i, current_song_id: before?.id ?? null, current_slide: before?.slide ?? null });
+      // Remembered, to learn the order it's sung in once it's over.
+      if (path.current?.id !== id) {
+        finishSong();
+        path.current = { id, steps: [] };
+      }
+      path.current.steps.push({ slide: i, at: Date.now() });
     }
     engine.current.shown(id, before);
     syncLock.current?.();
-    const next = { id, slide: i };
+    const next = { id, slide: i, pos: at >= 0 ? at : undefined };
     currentRef.current = next;
     setCurrent(next);
-  }, [songById, markCleared]);
+  }, [songById, markCleared, finishSong]);
 
   const goLive = useCallback((on: boolean) => {
     liveRef.current = on;
@@ -408,6 +525,7 @@ export function Worship({
     const cur = currentRef.current;
     if (!cur) return;
     engine.current.reject(cur.id);
+    if (path.current?.id === cur.id) path.current = null;
     logDetection.current?.({ kind: "shown", decision: "rejected", song_id: cur.id, slide: cur.slide, current_song_id: cur.id, current_slide: cur.slide });
     clear();
     currentRef.current = null;
@@ -416,12 +534,16 @@ export function Worship({
     syncLock.current?.();
   }, [clear]);
 
+  // Through the song in its order (repeats and all).
   const step = useCallback(
     (dir: 1 | -1) => {
       const cur = currentRef.current;
-      if (cur) putUp(cur.id, cur.slide + dir);
+      if (!cur) return;
+      const order = orderOfRef.current(songById(cur.id)).order;
+      const at = (cur.pos ?? positionOf(order, cur.slide)) + dir;
+      if (at >= 0 && at < order.length) putUp(cur.id, order[at], "operator", at);
     },
-    [putUp],
+    [putUp, songById],
   );
 
   // ---- Following the singing -----------------------------------------------
@@ -456,7 +578,7 @@ export function Worship({
       if (final) sung.current = recent.split(/\s+/).slice(-24).join(" ");
       setHeard(recent.split(/\s+/).slice(-14).join(" "));
       const cur = currentRef.current;
-      const o = engine.current.hear({ recent, final, current: cur, follow: autoRef.current, now: Date.now() });
+      const o = engine.current.hear({ recent, final, current: cur && { ...cur, next: nextOf(cur) }, follow: autoRef.current, now: Date.now() });
       syncLock.current?.();
       setSuggestions(o.suggestions);
       if (o.show) putUp(o.show.id, o.show.slide, o.show.how);
@@ -476,7 +598,7 @@ export function Worship({
         });
       }
     },
-    [putUp],
+    [putUp, nextOf],
   );
 
   // Hints for the transcriber: the setlist's songs, or with no setlist the
@@ -524,6 +646,13 @@ export function Worship({
     };
   }, [live.serviceId, churchId]);
 
+  // Orders are learned during a service only. When it ends, the last
+  // song's order is kept too (the clean-up runs before the id changes).
+  useEffect(() => {
+    serviceRef.current = live.serviceId;
+    return () => finishSong();
+  }, [live.serviceId, finishSong]);
+
   // Each song that goes up live during a service, once, for the service
   // history and the weekly summary. Kept offline first, like the verses.
   const loggedSongs = useRef(new Set<string>());
@@ -551,7 +680,7 @@ export function Worship({
     if (!active) return;
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
-      if (t.closest("input, textarea, [role=listbox], [contenteditable=true]")) return;
+      if (arrangingRef.current || t.closest("input, textarea, [role=listbox], [contenteditable=true]")) return;
       // Alt + 1 to 3 puts up a suggested song.
       if (e.altKey && !e.ctrlKey && !e.metaKey && /^[1-3]$/.test(e.key)) {
         const x = picksRef.current[Number(e.key) - 1];
@@ -639,7 +768,7 @@ export function Worship({
     if (presenting) setQueue((q) => (q.includes(id) ? q : [...q, id]));
     else {
       currentRef.current = { id, slide: 0 };
-      setCurrent({ id, slide: 0 });
+      setCurrent(startOf(id));
     }
   }
 
@@ -648,7 +777,7 @@ export function Worship({
     setQueue((q) => q.filter((x) => x !== id));
     setEditing(null);
     currentRef.current = { id, slide: 0 };
-    setCurrent({ id, slide: 0 });
+    setCurrent(startOf(id));
   }
 
   async function remove(song: FullSong) {
@@ -852,13 +981,43 @@ export function Worship({
                   </div>
                 )}
 
-                {currentSong ? (
+                {currentSong && (
+                  <OrderBar
+                    source={currentOrder.source}
+                    churches={currentOrder.churches}
+                    hasOrder={orders.has(currentSong.id) || common.has(currentSong.id)}
+                    asWritten={asWritten}
+                    onWritten={setAsWritten}
+                    arranging={arranging}
+                    canArrange={/^[0-9a-f-]{36}$/i.test(currentSong.id)}
+                    onArrange={() => setArranging(true)}
+                  />
+                )}
+                {currentSong && arranging ? (
+                  <ArrangeOrder
+                    key={currentSong.id}
+                    slides={currentSong.slides}
+                    initial={orderOf({ id: currentSong.id, slides: currentSong.slides }).order}
+                    canReset={orders.has(currentSong.id)}
+                    onSave={(order) => {
+                      void saveOrder(currentSong.id, order, "arranged");
+                      setAsWritten(false);
+                      setArranging(false);
+                    }}
+                    onReset={() => {
+                      void saveOrder(currentSong.id, null, "arranged");
+                      setArranging(false);
+                    }}
+                    onCancel={() => setArranging(false)}
+                  />
+                ) : currentSong ? (
                   <SlideGrid
                     song={currentSong}
+                    order={currentOrder.order}
                     edited={edits[currentSong.id]}
-                    active={current?.slide ?? -1}
+                    active={current ? (current.pos ?? positionOf(currentOrder.order, current.slide)) : -1}
                     onAir={!!onAir}
-                    onPick={(i) => putUp(currentSong.id, i)}
+                    onPick={(i, pos) => putUp(currentSong.id, i, "operator", pos)}
                     onEdit={(i, text) => editSlide(currentSong.id, i, text)}
                   />
                 ) : (
@@ -915,7 +1074,7 @@ export function Worship({
                         <ChevronLeft size={18} />
                       </IconButton>
                       <span className={`min-w-20 px-2 text-center text-sm font-bold tabular-nums ${current ? "text-ink" : "text-faint"}`}>
-                        {currentSong && current ? `${current.slide + 1} / ${currentSong.slides.length}` : "No slide"}
+                        {currentSong && current ? `${(current.pos ?? positionOf(currentOrder.order, current.slide)) + 1} / ${currentOrder.order.length}` : "No slide"}
                       </span>
                       <IconButton label="Next slide (→ or Space)" onClick={() => step(1)} disabled={!current} className="h-9 w-9 text-ink hover:bg-surface-3">
                         <ChevronRight size={18} />
@@ -1000,7 +1159,7 @@ export function Worship({
             onOpen={(id) => {
               setEditing(null);
               currentRef.current = { id, slide: 0 };
-              setCurrent({ id, slide: 0 });
+              setCurrent(startOf(id));
             }}
           />
           <label className="relative block">
@@ -1025,7 +1184,7 @@ export function Worship({
                 onOpen={() => {
                   setEditing(null);
                   currentRef.current = { id: s.id, slide: 0 };
-                  setCurrent({ id: s.id, slide: 0 });
+                  setCurrent(startOf(s.id));
                 }}
               />
             ))}
@@ -1081,8 +1240,72 @@ const LibraryRow = memo(function LibraryRow({
   );
 });
 
+/**
+ * Above a song's slides: the order they're in (sung, or as written) and
+ * Arrange. The switch only shows once there's a sung order to switch from.
+ */
+function OrderBar({
+  source,
+  churches,
+  hasOrder,
+  asWritten,
+  onWritten,
+  arranging,
+  canArrange,
+  onArrange,
+}: {
+  source: OrderSource;
+  churches?: number;
+  hasOrder: boolean;
+  asWritten: boolean;
+  onWritten: (on: boolean) => void;
+  arranging: boolean;
+  canArrange: boolean;
+  onArrange: () => void;
+}) {
+  const note =
+    source === "sung"
+      ? "As your church sang it last time"
+      : source === "arranged"
+        ? "As you arranged it"
+        : source === "common"
+          ? `As ${churches && churches > 1 ? `${churches} churches sing` : "another church sings"} it`
+          : hasOrder
+            ? "As written"
+            : "As written. The order you sing it is learned in the service.";
+  const pill = (on: boolean) =>
+    `h-7 rounded-full px-3 text-xs font-bold transition ${on ? "bg-bg text-ink shadow-card" : "text-muted hover:text-ink"}`;
+  if (arranging) return null;
+  return (
+    <div className="mx-3 mb-2 flex min-h-8 flex-wrap items-center gap-x-3 gap-y-1.5">
+      {hasOrder && (
+        <div className="inline-flex shrink-0 rounded-full bg-surface-2 p-0.5" role="group" aria-label="Slide order">
+          <button type="button" aria-pressed={!asWritten} onClick={() => onWritten(false)} className={pill(!asWritten)}>
+            Sung
+          </button>
+          <button type="button" aria-pressed={asWritten} onClick={() => onWritten(true)} className={pill(asWritten)}>
+            As written
+          </button>
+        </div>
+      )}
+      <span className="min-w-0 flex-1 truncate text-xs text-muted">{note}</span>
+      {canArrange && (
+        <button
+          type="button"
+          onClick={onArrange}
+          title="Put the parts in the order your church sings them"
+          className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full bg-surface-2 px-3 text-xs font-bold text-muted transition hover:bg-surface-3 hover:text-ink active:scale-[0.97]"
+        >
+          <ListOrdered size={13} /> Arrange
+        </button>
+      )}
+    </div>
+  );
+}
+
 const SlideGrid = memo(function SlideGrid({
   song,
+  order,
   edited,
   active,
   onAir,
@@ -1090,16 +1313,19 @@ const SlideGrid = memo(function SlideGrid({
   onEdit,
 }: {
   song: FullSong;
+  /** The slides in the order they're sung (repeats included). */
+  order: Order;
   /** Slides changed for this service: index → words. */
   edited?: Record<number, string>;
+  /** The position in `order` that's selected. */
   active: number;
   onAir: boolean;
-  onPick: (i: number) => void;
+  onPick: (slide: number, pos: number) => void;
   /** New words for a slide, or null to put the original back. */
   onEdit: (i: number, text: string | null) => void;
 }) {
   const list = useRef<HTMLOListElement>(null);
-  const [editing, setEditing] = useState<{ i: number; text: string } | null>(null);
+  const [editing, setEditing] = useState<{ i: number; pos: number; text: string } | null>(null);
   useEffect(() => {
     list.current?.querySelector<HTMLElement>(`[data-slide="${active}"]`)?.scrollIntoView({ block: "nearest" });
   }, [active, song.id]);
@@ -1114,22 +1340,26 @@ const SlideGrid = memo(function SlideGrid({
 
   return (
     <ol ref={list} className="grid min-h-0 flex-1 auto-rows-min grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-2 overflow-y-auto px-3 pb-3">
-      {song.slides.map((s, i) => {
+      {order.map((i, pos) => {
+        const s = song.slides[i];
+        if (!s) return null;
         const changed = edited?.[i] !== undefined;
+        // A part sung again (a chorus coming back).
+        const again = order.indexOf(i) < pos;
         const tone =
-          i === active
+          pos === active
             ? onAir
               ? "bg-negative/10 shadow-[inset_0_0_0_2px_var(--color-negative)]"
               : "bg-accent-fill/15 shadow-[inset_0_0_0_1px_var(--accent-fill)]"
             : "bg-surface-2 hover:bg-surface-3";
-        if (editing?.i === i) {
+        if (editing?.i === i && editing.pos === pos) {
           return (
-            <li key={i} className="flex flex-col gap-2 rounded-lg bg-surface-2 p-2 shadow-[inset_0_0_0_1px_var(--accent-fill)]">
+            <li key={pos} className="flex flex-col gap-2 rounded-lg bg-surface-2 p-2 shadow-[inset_0_0_0_1px_var(--accent-fill)]">
               <span className="px-1 text-[11px] font-bold text-faint">{i + 1} · editing for today</span>
               <textarea
                 autoFocus
                 value={editing.text}
-                onChange={(e) => setEditing({ i, text: e.target.value })}
+                onChange={(e) => setEditing({ i, pos, text: e.target.value })}
                 onKeyDown={(e) => {
                   if (e.key === "Escape") {
                     e.preventDefault();
@@ -1155,11 +1385,12 @@ const SlideGrid = memo(function SlideGrid({
           );
         }
         return (
-          <li key={i} className="group relative">
-            <button type="button" data-slide={i} onClick={() => onPick(i)} className={`flex h-full w-full flex-col rounded-lg p-3 text-left transition ${tone}`}>
+          <li key={pos} className="group relative">
+            <button type="button" data-slide={pos} onClick={() => onPick(i, pos)} className={`flex h-full w-full flex-col rounded-lg p-3 text-left transition ${tone}`}>
               <span className="mb-1 flex items-center gap-2 pr-14 text-[11px] font-bold text-faint">
-                {i + 1}
+                {pos + 1}
                 {s.label && <span className={s.label === "Chorus" ? "text-accent" : ""}>{s.label}</span>}
+                {again && <span>again</span>}
                 {changed && <span className="text-warning">Edited</span>}
               </span>
               <span className="text-sm leading-snug whitespace-pre-line">{s.text}</span>
@@ -1171,7 +1402,7 @@ const SlideGrid = memo(function SlideGrid({
                   <Undo2 size={14} />
                 </IconButton>
               )}
-              <IconButton label="Change the words for today" onClick={() => setEditing({ i, text: s.text })} className="h-7 w-7 hover:bg-ink/10!">
+              <IconButton label="Change the words for today" onClick={() => setEditing({ i, pos, text: s.text })} className="h-7 w-7 hover:bg-ink/10!">
                 <Pencil size={13} />
               </IconButton>
             </span>

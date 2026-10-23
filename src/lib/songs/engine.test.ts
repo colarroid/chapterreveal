@@ -138,3 +138,14 @@ describe("FollowEngine, one line sung over and over", () => {
     }
   });
 });
+
+describe("FollowEngine, a song's sung order", () => {
+  it("goes early to the next slide in the order sung, not as written", () => {
+    const e = new FollowEngine();
+    e.library = library;
+    e.shown("river", null, 0);
+    // River is sung verse 1, chorus, verse 2: after slide 0 comes slide 2.
+    const o = e.hear({ recent: "down by the river of mercy i lay my burdens down", final: true, current: { id: "river", slide: 0, next: 2 }, follow: true, now: 1000 });
+    expect(o).toMatchObject({ decision: "early", show: { id: "river", slide: 2 } });
+  });
+});

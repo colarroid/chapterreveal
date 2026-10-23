@@ -30,7 +30,7 @@ export interface Heard {
   /** A finished line (the transcriber won't change it). */
   final: boolean;
   /** What's on screen now. */
-  current: { id: string; slide: number } | null;
+  current: { id: string; slide: number; next?: number } | null;
   /** Follow is on: confident matches go up without the operator. */
   follow: boolean;
   now: number;
@@ -96,7 +96,7 @@ export class FollowEngine {
       const at = current ? this.pos(idx, current.id) : -1;
       const onlyAt = only ? this.pos(idx, only) : undefined;
       if (onlyAt === -1) return null;
-      const r = idx.match(recent, current && at >= 0 ? { song: at, slide: current.slide } : null, {
+      const r = idx.match(recent, current && at >= 0 ? { song: at, slide: current.slide, next: current.next } : null, {
         only: onlyAt,
         prior: (song) => this.usage.get(idx.songs[song].id) ?? 1,
       });
@@ -166,9 +166,11 @@ export class FollowEngine {
     const idx = this.library;
     const at = idx && current ? this.pos(idx, current.id) : -1;
     const song = at >= 0 ? idx!.songs[at] : null;
-    if (song && current && current.id === chosen.id && current.slide === chosen.slide && current.slide + 1 < song.slides.length && idx!.atLastLine(at, current.slide, recent)) {
+    // The next slide in the order the church sings it, else as written.
+    const next = current?.next ?? (current ? current.slide + 1 : -1);
+    if (song && current && current.id === chosen.id && current.slide === chosen.slide && next >= 0 && next < song.slides.length && idx!.atLastLine(at, current.slide, recent)) {
       f.wentEarly(current.id, current.slide, now);
-      return out("early", [], { id: current.id, slide: current.slide + 1, how: "early" });
+      return out("early", [], { id: current.id, slide: next, how: "early" });
     }
     return out(settled ? "stay" : "hold", []);
   }
