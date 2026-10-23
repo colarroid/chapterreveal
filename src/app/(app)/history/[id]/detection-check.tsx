@@ -26,7 +26,7 @@ export function DetectionCheck({ serviceId, churchId, titles }: { serviceId: str
       const supabase = supabaseBrowser();
       const [{ data, error }, songs, usage] = await Promise.all([
         supabase.from("song_detections").select("at, kind, heard, decision, song_id, slide").eq("service_id", serviceId).order("at").limit(10000),
-        (async () => songsInMemory(churchId) ?? (await storedSongs(churchId)) ?? (await fetchAllSongs()))(),
+        (async () => songsInMemory(churchId) ?? (await storedSongs(churchId)) ?? (await fetchAllSongs(churchId)))(),
         supabase.rpc("song_usage"),
       ]);
       if (error) throw error;

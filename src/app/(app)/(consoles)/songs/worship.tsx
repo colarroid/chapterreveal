@@ -57,7 +57,7 @@ export interface LibrarySong {
   title: string;
   author: string;
   firstLine: string;
-  /** In the shared library (read-only here), not the church's own. */
+  /** Not this church's own (the shared library or another church's): read-only here. */
   shared: boolean;
 }
 
@@ -144,7 +144,7 @@ export function Worship({
     let live = true;
     if (!songsInMemory(churchId)) void storedSongs(churchId).then((saved) => live && saved && setSongs((cur) => cur ?? saved));
     if (songsAreFresh(churchId)) return;
-    fetchAllSongs().then(
+    fetchAllSongs(churchId).then(
       (fresh) => {
         if (!live) return;
         keepSongs(churchId, fresh, true);
@@ -1233,7 +1233,6 @@ const LibraryRow = memo(function LibraryRow({
       <button type="button" onClick={onOpen} className="block min-w-0 flex-1 px-3 py-2 text-left">
         <span className="flex items-center gap-2">
           <span className="min-w-0 flex-1 truncate text-[15px] font-semibold">{song.title}</span>
-          {!song.shared && <span className="shrink-0 text-[10px] font-bold tracking-wider text-accent uppercase">Ours</span>}
         </span>
         <span className="block truncate text-xs text-muted">{song.firstLine || song.author || " "}</span>
       </button>

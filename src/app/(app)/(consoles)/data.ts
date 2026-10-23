@@ -59,8 +59,8 @@ export async function loadSongs(m: Membership): Promise<SongsData> {
   const setlistsQuery = Promise.resolve(
     supabase.from("setlists").select("id, name, song_ids").eq("church_id", m.churchId).order("updated_at", { ascending: false }).limit(30),
   );
-  // Titles only, the shared library and the church's own (the database
-  // decides which rows this church can see). The words load in the browser.
+  // Titles only, every church's songs and the shared library (the database
+  // decides which rows this church can see, migration 0029). The words load in the browser.
   // The first page also says how many there are; the rest come at once.
   const page = (p: number, count = false) =>
     Promise.resolve(
@@ -77,7 +77,7 @@ export async function loadSongs(m: Membership): Promise<SongsData> {
   for (const { data, error } of [first, ...rest]) {
     if (error) return { error: `Could not load songs: ${error.message}. Has migration 0008 been run?` };
     for (const r of data ?? []) {
-      library.push({ id: r.id, title: r.title, author: r.author, firstLine: r.first_line, shared: r.church_id === null });
+      library.push({ id: r.id, title: r.title, author: r.author, firstLine: r.first_line, shared: r.church_id !== m.churchId });
     }
   }
   const { data: setlists } = await setlistsQuery;

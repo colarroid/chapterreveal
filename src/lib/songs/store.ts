@@ -1,7 +1,7 @@
 "use client";
 
-// Every song's words for the worship console: the shared library and the
-// church's own. Loading them all takes a few seconds, so they're kept:
+// Every song's words for the worship console: the shared library and every
+// church's songs (only the church's own can be edited). Loading them all takes a few seconds, so they're kept:
 //   - in memory, so switching tabs and coming back is instant;
 //   - in the browser (Cache Storage), so the next visit opens straight away
 //     while a fresh copy downloads in the background.
@@ -64,7 +64,7 @@ export function forgetSongs() {
 }
 
 /** Downloads every song, all pages at once. */
-export async function fetchAllSongs(): Promise<FullSong[]> {
+export async function fetchAllSongs(churchId: string): Promise<FullSong[]> {
   const supabase = supabaseBrowser();
   const { count, error } = await supabase.from("songs").select("id", { count: "exact", head: true });
   if (error) throw error;
@@ -82,7 +82,7 @@ export async function fetchAllSongs(): Promise<FullSong[]> {
   const out: FullSong[] = [];
   for (const { data, error: e } of results) {
     if (e) throw e;
-    for (const r of data ?? []) out.push({ ...(r as Omit<FullSong, "shared">), shared: r.church_id === null });
+    for (const r of data ?? []) out.push({ ...(r as Omit<FullSong, "shared">), shared: r.church_id !== churchId });
   }
   // Songs added between the count and the pages land on a page beyond the
   // last; they arrive on the next refresh.
