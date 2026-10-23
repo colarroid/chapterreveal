@@ -10,14 +10,14 @@ const FREE_FEATURES = [
   "Projects verses automatically in less than a second",
   "Detects and projects worship lyrics automatically",
   `${limitText("image", free.image)} and ${limitText("video", free.video)} as custom backgrounds`,
-  "Picture and text slides for presentations",
+  `${free.decks} slide presentations, up to ${free.deckSlides} slides each (text and pictures)`,
   "Popular translations",
   "Every Bible translation we offer",
   "Shared song library, your own songs and playlists",
   "Projector and green-screen livestream outputs",
   "Service history, and Bibles that work offline",
 ];
-const PAID_EXTRAS = ["Video slides", "Instant access to future releases and updates"];
+const PAID_EXTRAS = ["Video slides", "Unlimited presentations and slides", "Instant access to future releases and updates"];
 
 export function PricingPlans({ price }: { price: Price }) {
   const [yearly, setYearly] = useState(false);
