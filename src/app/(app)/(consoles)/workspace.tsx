@@ -72,7 +72,7 @@ function SongsPanel({ base, data }: { base: ConsoleBase; data: Promise<SongsData
 function SlidesPanel({ base, data }: { base: ConsoleBase; data: Promise<SlidesData> }) {
   const d = use(data);
   if ("error" in d) return <LoadError text={d.error} />;
-  return <Slides churchId={base.churchId} userId={base.userId} screenToken={base.screenToken} display={base.display} plan={d.plan} initial={d.initial} />;
+  return <Slides churchId={base.churchId} userId={base.userId} screenToken={base.screenToken} display={base.display} plan={d.plan} initial={d.initial} decks={d.decks} />;
 }
 
 function LoadError({ text }: { text: string }) {

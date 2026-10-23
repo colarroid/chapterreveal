@@ -1,7 +1,7 @@
 "use client";
 
-import { Film, ImagePlus, Maximize, MonitorOff, MonitorUp, Pencil, Plus, Trash2, Type, X } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { ChevronLeft, Maximize, MonitorOff, MonitorUp, Pencil, Plus, Trash2, Type, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { confirmDialog } from "@/components/confirm";
 import { SlideView } from "@/components/slide-view";
 import { Button, Chip, IconButton, Kbd, Notice } from "@/components/ui";
@@ -9,14 +9,26 @@ import { cleanDisplay, type DisplaySettings } from "@/lib/display/theme";
 import { askToGoLive, mayProjectHere } from "@/lib/live/present-check";
 import { closeProjector, fillProjectorScreen, presentOnProjector, useProjectorOpen } from "@/lib/live/present";
 import { CONSOLE_CHANNEL, SCREEN_TAKEN, ScreenSender, TAKEN_ELSEWHERE, type ConsoleMessage } from "@/lib/live/screen";
-import { limitText, PLAN_LIMITS, planName, type Plan } from "@/lib/plans";
+import { PLAN_LIMITS, planName, type Plan } from "@/lib/plans";
 import type { Slide } from "@/lib/scripture/bible";
 import { supabaseBrowser } from "@/lib/supabase/client";
+import { AddSlideChoice } from "./add-slide";
 import { useLeaveWarning } from "@/lib/use-leave-warning";
 import { useConsoleActive } from "../active";
 import { SwitchTrack } from "@/components/motion";
 
+/** A named set of slides ("Sunday announcements"), migration 0033. */
+export interface SlideDeck {
+  id: string;
+  name: string;
+  position: number;
+}
+
+const DECK_KEY = "reedark.slideDeck";
+
 export interface SavedSlide {
+  /** The presentation it's in. */
+  deck_id: string | null;
   id: string;
   kind: "text" | "image" | "video";
   title: string;
@@ -56,6 +68,7 @@ export function Slides({
   display: initialDisplay,
   plan,
   initial,
+  decks: initialDecks,
 }: {
   churchId: string;
   userId: string;
@@ -63,9 +76,34 @@ export function Slides({
   display: DisplaySettings;
   plan: Plan;
   initial: SavedSlide[];
+  decks: SlideDeck[];
 }) {
   const active = useConsoleActive();
-  const [slides, setSlides] = useState(initial);
+  const [all, setSlides] = useState(initial);
+
+  // ---- Presentations ------------------------------------------------------------
+  // The open one's slides are the ones listed, stepped through and shown; the
+  // last one opened is opened again next time.
+  const [decks, setDecks] = useState(initialDecks);
+  const [deckId, setDeckId] = useState<string | null>(null);
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(DECK_KEY);
+      if (saved && initialDecks.some((d) => d.id === saved)) setDeckId(saved);
+    } catch {}
+  }, [initialDecks]);
+  const openDeck = useCallback((id: string | null) => {
+    setDeckId(id);
+    try {
+      if (id) localStorage.setItem(DECK_KEY, id);
+      else localStorage.removeItem(DECK_KEY);
+    } catch {}
+  }, []);
+  const deck = decks.find((d) => d.id === deckId) ?? null;
+  const slides = useMemo(() => (deck ? all.filter((x) => x.deck_id === deck.id) : []), [all, deck]);
+  /** A new slide being made: choosing what it is, or writing its words. */
+  const [adding, setAdding] = useState<null | "choose" | "text">(null);
+  useEffect(() => setAdding(null), [deckId]);
   // Free plan pictures and videos leave the list the moment they expire
   // (the files go when the page is next opened).
   useEffect(() => {
@@ -78,9 +116,9 @@ export function Slides({
   // The Free plan's allowance: picture and video slides kept at a time.
   const limits = PLAN_LIMITS[plan];
   const limit = limits.slide;
-  const mediaCount = slides.filter((s) => s.kind !== "text").length;
+  const mediaCount = all.filter((s) => s.kind !== "text").length;
   const full = mediaCount >= limit;
-  const [selected, setSelected] = useState<string | null>(initial[0]?.id ?? null);
+  const [selected, setSelected] = useState<string | null>(null);
   // Live, as in the other consoles: while on, the selected slide is on
   // screen; off, slides only preview here and the screen is blank. Starts
   // off; L toggles it, Esc turns it off.
@@ -89,7 +127,7 @@ export function Slides({
   const [elsewhere, setElsewhere] = useState(false);
   const liveRef = useRef(false);
   const onAir = isLive ? selected : null;
-  const [editing, setEditing] = useState<SavedSlide | "new" | null>(null);
+  const [editing, setEditing] = useState<SavedSlide | null>(null);
   const [error, setError] = useState("");
   /** "Video slides are Pro": shown when a Free church presses Video. */
   const [upsell, setUpsell] = useState(false);
@@ -210,22 +248,26 @@ export function Slides({
 
   // ---- Saving -----------------------------------------------------------------
   const nextPosition = () => (slides.length ? Math.max(...slides.map((s) => s.position)) + 1 : 0);
+  // The plan's limits on presentations and their slides (Free: 2, of 10 each).
+  const deckFull = slides.length >= limits.deckSlides;
+  const decksFull = decks.length >= limits.decks;
 
   async function saveText(title: string, body: string, existing: SavedSlide | null): Promise<string | void> {
     const supabase = supabaseBrowser();
     const row = { title: title.trim().slice(0, 120), body: body.trim().slice(0, 2000), updated_at: new Date().toISOString() };
     const { data, error } = existing
-      ? await supabase.from("slides").update(row).eq("id", existing.id).select("id, kind, title, body, image_url, position").single()
+      ? await supabase.from("slides").update(row).eq("id", existing.id).select("id, kind, title, body, image_url, position, deck_id").single()
       : await supabase
           .from("slides")
-          .insert({ ...row, church_id: churchId, kind: "text", position: nextPosition(), created_by: userId })
-          .select("id, kind, title, body, image_url, position")
+          .insert({ ...row, church_id: churchId, kind: "text", position: nextPosition(), deck_id: deckId, created_by: userId })
+          .select("id, kind, title, body, image_url, position, deck_id")
           .single();
     if (error || !data) return error?.message ?? "Couldn't save the slide.";
     const saved = data as SavedSlide;
     setSlides((all) => (existing ? all.map((s) => (s.id === saved.id ? saved : s)) : [...all, saved]));
     setSelected(saved.id);
     setEditing(null);
+    setAdding(null);
     // Edited while on screen: the screen shows the new words.
     if (liveRef.current && selected === saved.id) void screen.current?.show(toSlide(saved));
   }
@@ -292,12 +334,13 @@ export function Slides({
       const res = await fetch("/api/slides", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ kind: video ? "video" : "image", public_ids: ids, title: files[0].name.replace(/\.[^.]+$/, "").slice(0, 120), position: nextPosition() }),
+        body: JSON.stringify({ kind: video ? "video" : "image", public_ids: ids, title: files[0].name.replace(/\.[^.]+$/, "").slice(0, 120), position: nextPosition(), deck_id: deckId }),
       });
       const saved = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(saved.error ?? "Couldn't save the upload.");
       setSlides((all) => [...all, saved as SavedSlide]);
       select(saved as SavedSlide);
+      setAdding(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Upload failed.");
     } finally {
@@ -350,31 +393,82 @@ export function Slides({
     setSelected((cur) => (cur === s.id ? null : cur));
   }
 
+  // ---- Making, renaming and deleting presentations -----------------------------
+  const [naming, setNaming] = useState<null | "new" | "rename">(null);
+  async function saveDeck(name: string): Promise<string | void> {
+    const clean = name.trim().slice(0, 80);
+    if (!clean) return "Give the presentation a name.";
+    const supabase = supabaseBrowser();
+    if (naming === "rename" && deck) {
+      const { error: e } = await supabase.from("slide_decks").update({ name: clean, updated_at: new Date().toISOString() }).eq("id", deck.id);
+      if (e) return e.message;
+      setDecks((list) => list.map((d) => (d.id === deck.id ? { ...d, name: clean } : d)));
+    } else {
+      const position = decks.length ? Math.max(...decks.map((d) => d.position)) + 1 : 0;
+      const { data, error: e } = await supabase.from("slide_decks").insert({ church_id: churchId, name: clean, position, created_by: userId }).select("id, name, position").single();
+      if (e || !data) return e?.message ?? "Couldn't make the presentation.";
+      setDecks((list) => [...list, data as SlideDeck]);
+      openDeck((data as SlideDeck).id);
+      // Straight on to its first slide.
+      setAdding("choose");
+    }
+    setNaming(null);
+  }
+
+  async function removeDeck(d: SlideDeck) {
+    const inIt = all.filter((x) => x.deck_id === d.id);
+    const ok = await confirmDialog({
+      title: `Delete "${d.name}"?`,
+      body: inIt.length ? `Its ${inIt.length} slide${inIt.length === 1 ? "" : "s"} go too. This can't be undone.` : "This can't be undone.",
+      confirmLabel: "Delete",
+      danger: true,
+    });
+    if (!ok) return;
+    // Pictures and videos through the server, so their files are deleted too.
+    for (const x of inIt.filter((x) => x.kind !== "text")) await fetch(`/api/slides/${x.id}`, { method: "DELETE" });
+    const { error: e } = await supabaseBrowser().from("slide_decks").delete().eq("id", d.id);
+    if (e) return setError(e.message);
+    if (liveRef.current && inIt.some((x) => x.id === selected)) void screen.current?.show(null);
+    setSlides((list) => list.filter((x) => x.deck_id !== d.id));
+    setDecks((list) => list.filter((x) => x.id !== d.id));
+    if (deckId === d.id) openDeck(null);
+  }
+
+  // Choosing what a new slide is.
+  const pickText = () => setAdding("text");
+  const pickPicture = () => fileInput.current?.click();
+  const pickVideo = () => (limits.videoSlides ? videoInput.current?.click() : setUpsell(true));
+
   // ---- Reordering: drag a slide onto another to put it there -----------------
   const [dragging, setDragging] = useState<string | null>(null);
   const [dropOn, setDropOn] = useState<string | null>(null);
   async function move(id: string, before: string) {
     if (id === before) return;
     const order = slides.filter((s) => s.id !== id);
+    const others = all.filter((x) => x.deck_id !== deckId);
     const at = order.findIndex((s) => s.id === before);
     const moved = slides.find((s) => s.id === id);
     if (!moved || at < 0) return;
     order.splice(at, 0, moved);
     const next = order.map((s, position) => ({ ...s, position }));
     const previous = slides;
-    setSlides(next);
+    setSlides([...others, ...next]);
     // Only rows whose place changed are saved.
     const changed = next.filter((s) => previous.find((o) => o.id === s.id)?.position !== s.position);
     const supabase = supabaseBrowser();
     const results = await Promise.all(changed.map((s) => supabase.from("slides").update({ position: s.position }).eq("id", s.id)));
     const failed = results.find((r) => r.error);
     if (failed) {
-      setSlides(previous);
+      setSlides([...others, ...previous]);
       setError(failed.error!.message);
     }
   }
 
   const current = slides.find((s) => s.id === selected) ?? null;
+  // Opening a presentation selects its first slide.
+  useEffect(() => {
+    setSelected((cur) => (cur && slides.some((x) => x.id === cur) ? cur : (slides[0]?.id ?? null)));
+  }, [slides]);
   useEffect(() => {
     currentRef.current = current;
   }, [current]);
@@ -492,166 +586,318 @@ export function Slides({
                 Click a slide or use the arrow keys to select it; while Live is on, it goes straight to the screen. Double-click a slide to go live with it.
               </p>
             </>
+          ) : deck && !slides.length && adding !== "text" ? (
+            <div className="grid flex-1 place-items-center p-4">
+              <AddSlideChoice
+                big
+                first
+                videoAllowed={limits.videoSlides}
+                mediaFull={full}
+                uploading={uploading}
+                onText={pickText}
+                onPicture={pickPicture}
+                onVideo={pickVideo}
+              />
+            </div>
           ) : (
             <div className="grid flex-1 place-items-center text-center text-sm text-muted">
               <p className="max-w-xs">
-                Announcements, notices, welcome messages, flyers. Make a text slide or upload a picture; they&apos;re kept for next week.
+                {deck
+                  ? adding === "text"
+                    ? "Write the slide's words on the right."
+                    : "Pick a slide on the right."
+                  : "Announcements, notices, welcome messages, flyers. Make a presentation, then add its slides: text, pictures or a video. They're kept for next week."}
               </p>
             </div>
           )}
         </div>
       </div>
 
-      {/* The saved slides */}
+      {/* Presentations, or the open one's slides */}
       <aside className="flex min-h-[420px] flex-col gap-3 card p-3 lg:min-h-0">
-        <div className="flex items-center gap-2 px-1 pt-1">
-          <h2 className="font-bold">Slides</h2>
-          <span className="text-sm text-faint tabular-nums">{slides.length}</span>
-          <div className="ml-auto flex gap-1">
-            <Button size="sm" variant="secondary" onClick={() => setEditing("new")}>
-              <Type size={14} /> Text
-            </Button>
-            <Button
-              size="sm"
-              variant="secondary"
-              loading={uploading !== null}
-              disabled={full}
-              title={full ? `The ${planName(plan)} plan keeps ${limitText("slide", limit)} at a time` : `Pick up to ${limits.slideImages} pictures for one slide, side by side`}
-              onClick={() => fileInput.current?.click()}
-            >
-              {uploading === null ? <ImagePlus size={14} /> : null}
-              {uploading === null ? "Pic" : `${Math.round(uploading * 100)}%`}
-            </Button>
-            {/* Video slides are a Pro (Paid) feature: on Free the button says so. */}
-            <Button
-              size="sm"
-              variant="secondary"
-              disabled={uploading !== null || (limits.videoSlides && full)}
-              title={limits.videoSlides ? "Upload a video slide" : "Video slides are on the Paid plan"}
-              onClick={() => (limits.videoSlides ? videoInput.current?.click() : setUpsell(true))}
-            >
-              <Film size={14} /> Vid
-              <span className="rounded-full bg-accent-fill px-1.5 py-px text-[9px] leading-tight font-bold tracking-wide text-on-accent">PRO</span>
-            </Button>
-          </div>
-          <input
-            ref={fileInput}
-            type="file"
-            multiple
-            accept="image/jpeg,image/png,image/webp"
-            className="hidden"
-            onChange={(e) => {
-              const files = [...(e.target.files ?? [])];
-              if (files.length) void upload(files);
-              e.target.value = "";
-            }}
-          />
-          <input
-            ref={videoInput}
-            type="file"
-            accept="video/mp4,video/quicktime,video/webm"
-            className="hidden"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) void upload([f]);
-              e.target.value = "";
-            }}
-          />
-          <input
-            ref={addInput}
-            type="file"
-            multiple
-            accept="image/jpeg,image/png,image/webp"
-            className="hidden"
-            onChange={(e) => {
-              const files = [...(e.target.files ?? [])];
-              const s = slides.find((x) => x.id === selected);
-              if (files.length && s) void addPictures(s, files);
-              e.target.value = "";
-            }}
-          />
-        </div>
-
-        {editing && (
-          <TextEditor
-            key={editing === "new" ? "new" : editing.id}
-            existing={editing === "new" ? null : editing}
-            onCancel={() => setEditing(null)}
-            onSave={(title, body) => saveText(title, body, editing === "new" ? null : editing)}
-          />
-        )}
-
-        {/* The Free plan's allowance for pictures and videos; text is unlimited. */}
-        {Number.isFinite(limit) && (
-          <p className={`px-1 text-xs ${full ? "font-semibold text-warning" : "text-faint"}`}>
-            {mediaCount} of {limit} picture slides on the {planName(plan)} plan, up to {limits.slideImages} pictures each, kept 7 days.
-            {full ? " Delete one to upload another, or upgrade to keep more." : " Text slides are unlimited."}
-          </p>
-        )}
-
-        <ol className="-mx-1 min-h-0 flex-1 space-y-1 overflow-y-auto px-1">
-          {slides.map((s) => (
-            <li
-              key={s.id}
-              draggable
-              onDragStart={(e) => {
-                setDragging(s.id);
-                e.dataTransfer.effectAllowed = "move";
-              }}
-              onDragOver={(e) => {
-                if (!dragging) return;
-                e.preventDefault();
-                setDropOn(s.id);
-              }}
-              onDragLeave={() => setDropOn((cur) => (cur === s.id ? null : cur))}
-              onDrop={(e) => {
-                e.preventDefault();
-                if (dragging) void move(dragging, s.id);
-                setDragging(null);
-                setDropOn(null);
-              }}
-              onDragEnd={() => {
-                setDragging(null);
-                setDropOn(null);
-              }}
-              className={`rounded-lg ${dropOn === s.id && dragging !== s.id ? "ring-2 ring-accent" : ""} ${dragging === s.id ? "opacity-40" : ""}`}
-            >
-              <button
-                type="button"
-                onClick={() => select(s)}
-                onDoubleClick={() => {
-                  select(s);
-                  if (!liveRef.current) void liveOn();
-                }}
-                title="Drag to reorder. Double-click to show."
-                className={`flex w-full cursor-grab items-center gap-3 rounded-lg p-2 text-left transition active:cursor-grabbing ${s.id === selected ? "bg-surface-3" : "hover:bg-surface-2"}`}
+        {!deck ? (
+          <>
+            <div className="flex items-center gap-2 px-1 pt-1">
+              <h2 className="font-bold">Presentations</h2>
+              <span className="text-sm text-faint tabular-nums">{decks.length}</span>
+              <Button
+                size="sm"
+                variant="secondary"
+                className="ml-auto"
+                disabled={decksFull}
+                title={decksFull ? `The ${planName(plan)} plan has up to ${limits.decks} presentations` : "Make a presentation, then add its slides"}
+                onClick={() => setNaming("new")}
               >
-                <span className="grid aspect-video w-20 shrink-0 place-items-center overflow-hidden rounded bg-black">
-                  {s.kind === "image" && s.image_url ? (
-                    // eslint-disable-next-line @next/next/no-img-element -- a thumbnail of the church's own picture
-                    <img src={s.image_url} alt="" className="h-full w-full object-cover" />
-                  ) : s.kind === "video" && s.image_url ? (
-                    <video src={s.image_url} muted playsInline preload="metadata" className="h-full w-full object-cover" />
+                <Plus size={14} /> New presentation
+              </Button>
+            </div>
+            {naming === "new" && <DeckName onCancel={() => setNaming(null)} onSave={saveDeck} />}
+            {Number.isFinite(limits.decks) && (
+              <p className={`px-1 text-xs ${decksFull ? "font-semibold text-warning" : "text-faint"}`}>
+                {decks.length} of {limits.decks} presentations on the {planName(plan)} plan, up to {limits.deckSlides} slides each.
+                {decksFull && " Delete one to make another, or upgrade."}
+              </p>
+            )}
+            <ol className="-mx-1 min-h-0 flex-1 space-y-1 overflow-y-auto px-1">
+              {decks.map((d) => {
+                const inIt = all.filter((x) => x.deck_id === d.id).sort((x, y) => x.position - y.position);
+                return (
+                  <li key={d.id} className="group flex items-center gap-1 rounded-lg transition hover:bg-surface-2">
+                    <button type="button" onClick={() => openDeck(d.id)} className="flex min-w-0 flex-1 items-center gap-3 p-2 text-left">
+                      <Thumb slide={inIt[0]} />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-semibold">{d.name}</span>
+                        <span className="block text-xs text-muted">
+                          {inIt.length} slide{inIt.length === 1 ? "" : "s"}
+                        </span>
+                      </span>
+                    </button>
+                    <IconButton label="Delete presentation" onClick={() => void removeDeck(d)} className="mr-1 h-8 w-8 opacity-0 group-hover:opacity-100 focus:opacity-100 hover:text-negative">
+                      <Trash2 size={14} />
+                    </IconButton>
+                  </li>
+                );
+              })}
+              {!decks.length && naming !== "new" && (
+                <li className="px-4 py-10 text-center">
+                  <p className="text-sm text-muted">No presentations yet.</p>
+                  <Button size="sm" variant="secondary" className="mt-4" onClick={() => setNaming("new")}>
+                    <Plus size={13} /> New presentation
+                  </Button>
+                </li>
+              )}
+            </ol>
+          </>
+        ) : (
+          <>
+            <div className="flex items-center gap-1 pt-1">
+              <IconButton label="All presentations" onClick={() => openDeck(null)} className="h-8 w-8">
+                <ChevronLeft size={16} />
+              </IconButton>
+              {naming === "rename" ? (
+                <div className="min-w-0 flex-1">
+                  <DeckName initial={deck.name} onCancel={() => setNaming(null)} onSave={saveDeck} />
+                </div>
+              ) : (
+                <>
+                  <h2 className="min-w-0 truncate font-bold">{deck.name}</h2>
+                  <span className="text-sm text-faint tabular-nums">
+                    {slides.length}
+                    {Number.isFinite(limits.deckSlides) ? `/${limits.deckSlides}` : ""}
+                  </span>
+                  <span className="ml-auto flex">
+                    <IconButton label="Rename presentation" onClick={() => setNaming("rename")} className="h-8 w-8">
+                      <Pencil size={14} />
+                    </IconButton>
+                    <IconButton label="Delete presentation" onClick={() => void removeDeck(deck)} className="h-8 w-8 hover:text-negative">
+                      <Trash2 size={14} />
+                    </IconButton>
+                  </span>
+                </>
+              )}
+            </div>
+
+            {editing && (
+              <TextEditor key={editing.id} existing={editing} onCancel={() => setEditing(null)} onSave={(title, body) => saveText(title, body, editing)} />
+            )}
+
+            {/* The Free plan's allowance for pictures and videos; text is unlimited. */}
+            {Number.isFinite(limit) && (
+              <p className={`px-1 text-xs ${full ? "font-semibold text-warning" : "text-faint"}`}>
+                {mediaCount} of {limit} picture slides on the {planName(plan)} plan, up to {limits.slideImages} pictures each, kept 7 days.
+                {full ? " Delete one to upload another, or upgrade to keep more." : " Text slides are unlimited."}
+              </p>
+            )}
+
+            <ol className="-mx-1 min-h-0 flex-1 space-y-1 overflow-y-auto px-1">
+              {slides.map((s, i) => (
+                <li
+                  key={s.id}
+                  draggable
+                  onDragStart={(e) => {
+                    setDragging(s.id);
+                    e.dataTransfer.effectAllowed = "move";
+                  }}
+                  onDragOver={(e) => {
+                    if (!dragging) return;
+                    e.preventDefault();
+                    setDropOn(s.id);
+                  }}
+                  onDragLeave={() => setDropOn((cur) => (cur === s.id ? null : cur))}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    if (dragging) void move(dragging, s.id);
+                    setDragging(null);
+                    setDropOn(null);
+                  }}
+                  onDragEnd={() => {
+                    setDragging(null);
+                    setDropOn(null);
+                  }}
+                  className={`group relative rounded-lg ${dropOn === s.id && dragging !== s.id ? "ring-2 ring-accent" : ""} ${dragging === s.id ? "opacity-40" : ""}`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => select(s)}
+                    onDoubleClick={() => {
+                      select(s);
+                      if (!liveRef.current) void liveOn();
+                    }}
+                    title="Drag to reorder. Double-click to show."
+                    className={`flex w-full cursor-grab items-center gap-3 rounded-lg p-2 text-left transition active:cursor-grabbing ${s.id === selected ? "bg-surface-3" : "hover:bg-surface-2"}`}
+                  >
+                    <span className="w-4 shrink-0 text-right text-xs font-bold text-faint tabular-nums">{i + 1}</span>
+                    <Thumb slide={s} />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-semibold">{nameOf(s)}</span>
+                      {s.kind === "text" ? (
+                        <span className="block truncate text-xs text-muted">{s.body.split("\n").filter(Boolean).join(" · ")}</span>
+                      ) : (
+                        s.expires_at && <span className="block text-xs text-warning">{expiresIn(s.expires_at)}</span>
+                      )}
+                    </span>
+                    {onAir === s.id && <span className="h-2 w-2 shrink-0 rounded-full bg-negative" title="On screen" />}
+                  </button>
+                </li>
+              ))}
+
+              {/* The next slide: what is it? Then its words, or its file. */}
+              {slides.length > 0 && (
+                <li className="pt-1">
+                  {adding === "text" ? (
+                    <TextEditor key="new" existing={null} onCancel={() => setAdding(null)} onSave={(title, body) => saveText(title, body, null)} />
+                  ) : adding === "choose" || uploading !== null ? (
+                    <AddSlideChoice
+                      videoAllowed={limits.videoSlides}
+                      mediaFull={full}
+                      uploading={uploading}
+                      onText={pickText}
+                      onPicture={pickPicture}
+                      onVideo={pickVideo}
+                      onCancel={() => setAdding(null)}
+                    />
                   ) : (
-                    <Type size={16} className="text-white/60" />
+                    <button
+                      type="button"
+                      onClick={() => setAdding("choose")}
+                      disabled={deckFull}
+                      title={deckFull ? `A presentation on the ${planName(plan)} plan has up to ${limits.deckSlides} slides` : "Add a slide: text, a picture or a video"}
+                      className="flex h-12 w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-line-strong text-sm font-bold text-muted transition hover:border-ink/30 hover:text-ink disabled:pointer-events-none disabled:opacity-50"
+                    >
+                      <Plus size={16} /> {deckFull ? `${limits.deckSlides} slides, the most on ${planName(plan)}` : "Add slide"}
+                    </button>
                   )}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-semibold">{nameOf(s)}</span>
-                  {s.kind === "text" ? (
-                    <span className="block truncate text-xs text-muted">{s.body.split("\n").filter(Boolean).join(" · ")}</span>
-                  ) : (
-                    s.expires_at && <span className="block text-xs text-warning">{expiresIn(s.expires_at)}</span>
-                  )}
-                </span>
-                {onAir === s.id && <span className="h-2 w-2 shrink-0 rounded-full bg-negative" title="On screen" />}
-              </button>
-            </li>
-          ))}
-          {!slides.length && !editing && <li className="px-2 py-6 text-center text-sm text-faint">No slides yet.</li>}
-        </ol>
+                </li>
+              )}
+              {/* The first slide's words, when Text was chosen in the preview. */}
+              {!slides.length && adding === "text" && (
+                <li>
+                  <TextEditor key="first" existing={null} onCancel={() => setAdding(null)} onSave={(title, body) => saveText(title, body, null)} />
+                </li>
+              )}
+              {!slides.length && adding !== "text" && <li className="px-2 py-6 text-center text-sm text-faint">No slides yet. Choose what the first one is.</li>}
+            </ol>
+          </>
+        )}
+        <input
+          ref={fileInput}
+          type="file"
+          multiple
+          accept="image/jpeg,image/png,image/webp"
+          className="hidden"
+          onChange={(e) => {
+            const files = [...(e.target.files ?? [])];
+            if (files.length) void upload(files);
+            e.target.value = "";
+          }}
+        />
+        <input
+          ref={videoInput}
+          type="file"
+          accept="video/mp4,video/quicktime,video/webm"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) void upload([f]);
+            e.target.value = "";
+          }}
+        />
+        <input
+          ref={addInput}
+          type="file"
+          multiple
+          accept="image/jpeg,image/png,image/webp"
+          className="hidden"
+          onChange={(e) => {
+            const files = [...(e.target.files ?? [])];
+            const sl = slides.find((x) => x.id === selected);
+            if (files.length && sl) void addPictures(sl, files);
+            e.target.value = "";
+          }}
+        />
       </aside>
     </div>
+  );
+}
+
+/** A slide's little picture: its picture, its video, or a T for text. Nothing yet: an empty frame. */
+function Thumb({ slide }: { slide?: SavedSlide }) {
+  if (!slide) return <span className="aspect-video w-20 shrink-0 rounded border-2 border-dashed border-line-strong" />;
+  return (
+    <span className="grid aspect-video w-20 shrink-0 place-items-center overflow-hidden rounded bg-black">
+      {slide?.kind === "image" && slide.image_url ? (
+        // eslint-disable-next-line @next/next/no-img-element -- a thumbnail of the church's own picture
+        <img src={slide.image_url} alt="" className="h-full w-full object-cover" />
+      ) : slide?.kind === "video" && slide.image_url ? (
+        <video src={slide.image_url} muted playsInline preload="metadata" className="h-full w-full object-cover" />
+      ) : (
+        <Type size={16} className="text-white/60" />
+      )}
+    </span>
+  );
+}
+
+/** A presentation's name, new or changed. Enter saves, Esc cancels. */
+function DeckName({ initial = "", onSave, onCancel }: { initial?: string; onSave: (name: string) => Promise<string | void>; onCancel: () => void }) {
+  const [name, setName] = useState(initial);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  return (
+    <form
+      className="space-y-2 rounded-lg bg-surface-2 p-2"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        setSaving(true);
+        const err = await onSave(name);
+        setSaving(false);
+        if (err) setError(err);
+      }}
+    >
+      <div className="flex gap-2">
+        <input
+          autoFocus
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              e.preventDefault();
+              e.stopPropagation();
+              onCancel();
+            }
+          }}
+          maxLength={80}
+          placeholder="Name it, e.g. Sunday announcements"
+          className="inset-field h-9 min-w-0 flex-1 rounded-md bg-bg px-3 text-sm"
+        />
+        <Button type="submit" size="sm" className="h-9!" loading={saving}>
+          {initial ? "Save" : "Create"}
+        </Button>
+        <Button type="button" size="sm" variant="ghost" className="h-9!" onClick={onCancel}>
+          Cancel
+        </Button>
+      </div>
+      {error && <Notice tone="error">{error}</Notice>}
+    </form>
   );
 }
 

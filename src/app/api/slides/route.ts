@@ -6,7 +6,7 @@ import { churchMember } from "./member";
 
 export const dynamic = "force-dynamic";
 
-const COLUMNS = "id, kind, title, body, image_url, images, position, expires_at";
+const COLUMNS = "id, kind, title, body, image_url, images, position, expires_at, deck_id";
 
 // Records a picture slide (one or more pictures just uploaded) or a video
 // slide. Only files in this church's own folder are accepted; the database
@@ -17,7 +17,7 @@ export async function POST(req: Request) {
   const config = cloudinaryConfig();
   if (!config) return NextResponse.json({ error: "Uploads aren't set up yet." }, { status: 500 });
 
-  const body = (await req.json().catch(() => ({}))) as { kind?: unknown; public_ids?: unknown; title?: unknown; position?: unknown };
+  const body = (await req.json().catch(() => ({}))) as { kind?: unknown; public_ids?: unknown; title?: unknown; position?: unknown; deck_id?: unknown };
   const kind = body.kind === "video" ? "video" : "image";
   const ids = (Array.isArray(body.public_ids) ? body.public_ids : []).map((v) => ownPublicId(member.churchId, v));
   if (!ids.length || ids.some((v) => !v) || (kind === "video" && ids.length !== 1)) {
@@ -25,6 +25,12 @@ export async function POST(req: Request) {
   }
   const first = ids[0]!;
   const supabase = await supabaseServer();
+  // The presentation it goes in: this church's own (the database only shows those).
+  const deckId = typeof body.deck_id === "string" ? body.deck_id : null;
+  if (deckId) {
+    const { data: deck } = await supabase.from("slide_decks").select("id").eq("id", deckId).maybeSingle();
+    if (!deck) return NextResponse.json({ error: "That presentation isn't this church's." }, { status: 400 });
+  }
   const { data, error } = await supabase
     .from("slides")
     .insert({
@@ -35,6 +41,7 @@ export async function POST(req: Request) {
       public_id: first,
       images: kind === "image" ? ids.map((id) => imageEntry(config.cloudName, id!)) : [],
       position: typeof body.position === "number" ? Math.round(body.position) : 0,
+      deck_id: deckId,
       created_by: member.userId,
     })
     .select(COLUMNS)

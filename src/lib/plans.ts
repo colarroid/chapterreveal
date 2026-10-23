@@ -1,5 +1,5 @@
 // What each plan includes. The database enforces the same numbers
-// (supabase/migrations 0016 and 0021, plan_limit); keep them in step. Only
+// (supabase/migrations 0016, 0021, 0023 and 0033, plan_limit); keep them in step. Only
 // a church's own uploads, saved gradients and picture/video slides count:
 // the shared library from the admin site is free for everyone.
 
@@ -15,11 +15,15 @@ export interface Limits {
   slideImages: number;
   /** Video slides allowed at all. */
   videoSlides: boolean;
+  /** Presentations a church can have. */
+  decks: number;
+  /** Slides in one presentation. */
+  deckSlides: number;
 }
 
 export const PLAN_LIMITS: Record<Plan, Limits> = {
-  free: { image: 5, video: 2, gradient: 10, slide: 10, slideImages: 3, videoSlides: false },
-  paid: { image: Infinity, video: Infinity, gradient: Infinity, slide: Infinity, slideImages: 6, videoSlides: true },
+  free: { image: 5, video: 2, gradient: 10, slide: 10, slideImages: 2, videoSlides: false, decks: 2, deckSlides: 10 },
+  paid: { image: Infinity, video: Infinity, gradient: Infinity, slide: Infinity, slideImages: 6, videoSlides: true, decks: Infinity, deckSlides: Infinity },
 };
 
 export const planName = (plan: Plan) => (plan === "paid" ? "Paid" : "Free");

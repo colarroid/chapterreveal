@@ -6,7 +6,7 @@ import { churchMember } from "../member";
 
 export const dynamic = "force-dynamic";
 
-const COLUMNS = "id, kind, title, body, image_url, images, position, expires_at";
+const COLUMNS = "id, kind, title, body, image_url, images, position, expires_at, deck_id";
 
 async function loadSlide(id: string) {
   const member = await churchMember();

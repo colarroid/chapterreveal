@@ -7,7 +7,7 @@ import type { Plan } from "@/lib/plans";
 import { findTranslation, type TranslationInfo } from "@/lib/scripture/translations";
 import { getStarredTranslations, getTranslations } from "@/lib/scripture/translations-server";
 import { supabaseServer, type Membership } from "@/lib/supabase/server";
-import type { SavedSlide } from "./slides/slides";
+import type { SavedSlide, SlideDeck } from "./slides/slides";
 import type { Setlist } from "./songs/setlist";
 import type { LibrarySong } from "./songs/worship";
 
@@ -83,7 +83,7 @@ export async function loadSongs(m: Membership): Promise<SongsData> {
   return { library, setlists: (setlists ?? []) as Setlist[] };
 }
 
-export type SlidesData = { plan: Plan; initial: SavedSlide[] } | { error: string };
+export type SlidesData = { plan: Plan; initial: SavedSlide[]; decks: SlideDeck[] } | { error: string };
 
 export async function loadSlides(m: Membership): Promise<SlidesData> {
   const supabase = await supabaseServer();
@@ -103,9 +103,11 @@ export async function loadSlides(m: Membership): Promise<SlidesData> {
     after(() => Promise.allSettled(files.map((x) => destroy(config, x.kind, x.id))));
   }
   const [{ data, error }, { data: plan }] = await Promise.all([
-    supabase.from("slides").select("id, kind, title, body, image_url, images, position, expires_at").eq("church_id", m.churchId).order("position").order("created_at"),
+    supabase.from("slides").select("id, kind, title, body, image_url, images, position, expires_at, deck_id").eq("church_id", m.churchId).order("position").order("created_at"),
     supabase.rpc("church_plan", { p_church: m.churchId }),
   ]);
-  if (error) return { error: `Could not load slides: ${error.message}. Have migrations 0020 and 0021 been run?` };
-  return { plan: (plan as Plan) === "paid" ? "paid" : "free", initial: (data ?? []) as SavedSlide[] };
+  const { data: decks, error: deckError } = await supabase.from("slide_decks").select("id, name, position").eq("church_id", m.churchId).order("position").order("created_at");
+  const problem = error ?? deckError;
+  if (problem) return { error: `Could not load slides: ${problem.message}. Has migration 0033 been run?` };
+  return { plan: (plan as Plan) === "paid" ? "paid" : "free", initial: (data ?? []) as SavedSlide[], decks: (decks ?? []) as SlideDeck[] };
 }
