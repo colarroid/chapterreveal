@@ -63,12 +63,6 @@ export interface LibrarySong {
   basedOn?: string | null;
 }
 
-type LibraryFilter = "all" | "church";
-const FILTERS: { value: LibraryFilter; label: string; empty: string }[] = [
-  { value: "all", label: "All songs", empty: "No songs yet. Add one: paste the lyrics from anywhere." },
-  { value: "church", label: "Our church's songs", empty: "Your church hasn't added any songs yet." },
-];
-const FILTER_KEY = "scripture.songFilter";
 const SETLIST_KEY = "scripture.setlist";
 
 /** The slide selected, and where it is in the song's order. */
@@ -724,38 +718,18 @@ export function Worship({
 
   // ---- Library and editing --------------------------------------------------
   const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<LibraryFilter>("all");
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem(FILTER_KEY) as LibraryFilter | null;
-      if (saved && FILTERS.some((f) => f.value === saved)) setFilter(saved);
-    } catch {}
-  }, []);
-  const chooseFilter = useCallback((v: string) => {
-    setFilter(v as LibraryFilter);
-    try {
-      localStorage.setItem(FILTER_KEY, v);
-    } catch {}
-  }, []);
-  const inFilter = useMemo(
-    () =>
-      filter === "all"
-        ? library
-        : library.filter((s) => !s.shared),
-    [library, filter],
-  );
   const [editing, setEditing] = useState<FullSong | "new" | null>(null);
   /** Songs added while another was being presented, waiting their turn. */
   const [queue, setQueue] = useState<string[]>([]);
   const folded = useMemo(() => {
     const words = new Map((songs ?? []).map((s) => [s.id, fold(songBody(s.slides))]));
-    return inFilter.map((s) => ({ s, key: fold(`${s.title} ${s.author} ${s.firstLine}`), words: words.get(s.id) ?? "" }));
-  }, [inFilter, songs]);
+    return library.map((s) => ({ s, key: fold(`${s.title} ${s.author} ${s.firstLine}`), words: words.get(s.id) ?? "" }));
+  }, [library, songs]);
   const matches = useMemo(() => {
     const q = fold(query.trim());
-    if (!q) return inFilter;
+    if (!q) return library;
     return folded.filter(({ key, words }) => key.includes(q) || (q.length >= 3 && words.includes(q))).map(({ s }) => s);
-  }, [folded, inFilter, query]);
+  }, [folded, library, query]);
 
   /** Opens a song at the start of its order. */
   function open(id: string) {
@@ -1204,15 +1178,8 @@ export function Worship({
       ) : (
         <aside className="flex min-h-[460px] flex-col gap-3 card p-3 lg:min-h-0">
           <div className="flex items-center gap-2 px-1 pt-1">
-            <h2 className="sr-only">Songs</h2>
-            <Dropdown
-              ariaLabel="Which songs"
-              value={filter}
-              onChange={chooseFilter}
-              options={FILTERS.map((f) => ({ value: f.value, label: f.label }))}
-              className="h-9 w-48 text-sm font-bold"
-            />
-            <span className="text-sm text-muted tabular-nums">{inFilter.length.toLocaleString()}</span>
+            <h2 className="font-bold">Songs</h2>
+            <span className="text-sm text-muted tabular-nums">{library.length.toLocaleString()}</span>
             {!songs && !loadError && <LoaderCircle size={14} className="animate-spin text-faint" />}
             <Button size="sm" variant="secondary" className="ml-auto" onClick={() => setEditing("new")}>
               <Plus size={13} /> Add song
@@ -1259,10 +1226,10 @@ export function Worship({
               />
             ))}
             {matches.length > SHOWN && <li className="px-3 py-3 text-center text-xs text-muted">{(matches.length - SHOWN).toLocaleString()} more. Search to narrow the list.</li>}
-            {inFilter.length > 0 && matches.length === 0 && <li className="px-3 py-8 text-center text-sm text-muted">No songs match.</li>}
-            {inFilter.length === 0 && (
+            {library.length > 0 && matches.length === 0 && <li className="px-3 py-8 text-center text-sm text-muted">No songs match.</li>}
+            {library.length === 0 && (
               <li className="px-4 py-10 text-center">
-                <p className="text-sm text-muted">{FILTERS.find((f) => f.value === filter)?.empty}</p>
+                <p className="text-sm text-muted">No songs yet. Add one: paste the lyrics from anywhere.</p>
                 <Button size="sm" variant="secondary" className="mt-4" onClick={() => setEditing("new")}>
                   <Plus size={13} /> Add song
                 </Button>
