@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BRIEF_MS, cleanOrder, isWritten, learnOrder, orderFromParts, partsFromOrder, positionOf, songParts, writtenOrder } from "./order";
+import { BRIEF_MS, cleanOrder, isWritten, learnOrder, nextPosition, orderFromParts, partStarts, partsFromOrder, positionOf, sameWords, songParts, writtenOrder } from "./order";
 
 describe("song order", () => {
   it("learns the order sung, chorus repeats and all", () => {
@@ -104,5 +104,23 @@ describe("song parts", () => {
     expect(partsFromOrder(parts, songbook.map((_, i) => i), songbook)).toEqual([0, 1, 0, 2, 0, 3]);
     // Not made of whole parts (a slide on its own): can't be read as parts.
     expect(partsFromOrder(parts, [0, 3], songbook)).toBeNull();
+  });
+});
+
+describe("a chorus sung once more", () => {
+  const C = ["Bless the Lord oh my soul", "Worship His holy name", "Sing like never before"];
+  const song = [...C, "Verse one a", "Verse one b", ...C, "Verse two a", "Verse two b", ...C].map((text) => ({ text }));
+  const order = song.map((_, i) => i);
+
+  it("stays in the same chorus, so the verse after it still comes next", () => {
+    const starts = partStarts(song, order);
+    // On the chorus's last slide (position 2), its first slide again: back to 0, not on to 5.
+    expect(nextPosition(order, 0, 2, starts)).toBe(0);
+    // Moving on as normal still goes forward.
+    expect(nextPosition(order, 3, 2, starts)).toBe(3);
+    // From the second chorus (positions 5 to 7), the chorus again stays there.
+    expect(nextPosition(order, 5, 7, starts)).toBe(5);
+    // …even when detection names the copy of that slide in another chorus.
+    expect(nextPosition(order, 10, 7, starts, sameWords(song))).toBe(5);
   });
 });

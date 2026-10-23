@@ -40,7 +40,7 @@ import { songKeyterms } from "@/lib/songs/keyterms";
 import { outbox } from "@/lib/live/outbox";
 import { FollowEngine, usageLift, type Suggested } from "@/lib/songs/engine";
 import { SongIndex } from "@/lib/songs/matcher";
-import { cleanOrder, learnOrder, positionOf, writtenOrder, type Order, type OrderSource } from "@/lib/songs/order";
+import { cleanOrder, learnOrder, nextPosition, partStarts, positionOf, sameWords, writtenOrder, type Order, type OrderSource } from "@/lib/songs/order";
 import { fetchAllSongs, keepSongs, songsAreFresh, songsInMemory, storedSongs, type FullSong } from "@/lib/songs/store";
 import { firstLine, songBody } from "@/lib/songs/songs";
 import { supabaseBrowser } from "@/lib/supabase/client";
@@ -468,13 +468,22 @@ export function Worship({
   const putUp = useCallback((id: string, slide: number, how: ShownHow = "operator", pos?: number) => {
     const song = songById(id);
     if (!song) return;
-    const i = Math.max(0, Math.min(slide, song.slides.length - 1));
+    let i = Math.max(0, Math.min(slide, song.slides.length - 1));
     const before = currentRef.current;
     // Where it is in the song's order: as given, the same place if it's the
-    // same slide again, else the next place it comes.
+    // same slide again, back within the part being sung if it's there (the
+    // chorus once more from the top), else the next place it comes.
     const order = orderOfRef.current(song).order;
+    const from = before?.id === id ? (before.pos ?? -1) : -1;
     const at =
-      pos ?? (before?.id === id && before.slide === i && how !== "early" ? (before.pos ?? positionOf(order, i)) : positionOf(order, i, before?.id === id ? (before.pos ?? -1) : -1));
+      pos ??
+      (before?.id === id && before.slide === i && how !== "early"
+        ? (before.pos ?? positionOf(order, i))
+        : nextPosition(order, i, from, from >= 0 ? partStarts(song.slides, order) : null, sameWords(song.slides)));
+    // A copy of the slide with the same words: show the one at that place.
+    if (at >= 0 && order[at] !== undefined) i = order[at];
+    // Following landed on what's already up (a copy of it): nothing to do.
+    if (how !== "operator" && before?.id === id && before.slide === i && (before.pos === undefined || before.pos === at)) return;
     if (liveRef.current) {
       void screen.current?.show(toSlide(song, i));
       markCleared(false);
