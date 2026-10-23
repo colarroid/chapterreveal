@@ -67,6 +67,13 @@ export const Backdrop = memo(function Backdrop({ background, dim }: { background
   );
 });
 
+/**
+ * A picture's size on screen: its full height (the default; a wide picture
+ * is trimmed at the sides), or its full width (a tall one is trimmed top
+ * and bottom). Centred either way.
+ */
+const pictureFit = (fit?: "height" | "width") => (fit === "width" ? "w-full h-auto max-h-none" : "h-full w-auto max-w-none");
+
 // Memoised: the console re-renders on every partial transcript, the slide
 // only when the operator changes it.
 export const SlideView = memo(function SlideView({
@@ -249,18 +256,20 @@ export const SlideView = memo(function SlideView({
           {slide.kind === "video" ? (
             <SlideVideo src={slide.image} playing={on && !muted} muted={muted} />
           ) : (slide.images?.length ?? 0) > 1 ? (
-            // Several pictures: side by side, each whole, on black.
+            // Several pictures: side by side on black, each filling its half the slide's way.
             <div className="flex h-full w-full items-center gap-[1.2cqw] p-[1.2cqw]">
               {slide.images!.map((src, i) => (
-                <div key={`${i}-${src}`} className="flex h-full min-w-0 flex-1 items-center justify-center">
+                <div key={`${i}-${src}`} className="flex h-full min-w-0 flex-1 items-center justify-center overflow-hidden">
                   {/* eslint-disable-next-line @next/next/no-img-element -- pictures from the church's own storage */}
-                  <img src={src} alt="" className="max-h-full max-w-full object-contain" />
+                  <img src={src} alt="" className={pictureFit(slide.fit)} />
                 </div>
               ))}
             </div>
           ) : (
-            // eslint-disable-next-line @next/next/no-img-element -- a full-screen picture from the church's own storage
-            <img src={slide.image} alt="" className="h-full w-full object-contain" />
+            <div className="flex h-full w-full items-center justify-center overflow-hidden">
+              {/* eslint-disable-next-line @next/next/no-img-element -- a full-screen picture from the church's own storage */}
+              <img src={slide.image} alt="" className={pictureFit(slide.fit)} />
+            </div>
           )}
         </div>
       </div>

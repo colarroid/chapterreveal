@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronLeft, Maximize, MonitorOff, MonitorUp, Pencil, Plus, Trash2, Type, X } from "lucide-react";
+import { ChevronLeft, Maximize, MonitorOff, MonitorUp, Pencil, Plus, StretchHorizontal, StretchVertical, Trash2, Type, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { confirmDialog } from "@/components/confirm";
 import { SlideView } from "@/components/slide-view";
@@ -39,6 +39,8 @@ export interface SavedSlide {
   position: number;
   /** Free plan: when a picture or video slide is removed. */
   expires_at?: string | null;
+  /** Picture slides: full height (the default) or full width on screen. */
+  fit?: "height" | "width";
 }
 
 const IMAGE_MAX = 8 * 1024 * 1024;
@@ -54,7 +56,7 @@ function expiresIn(iso: string): string {
 /** What goes to the screen for a saved slide. */
 function toSlide(s: SavedSlide): Slide {
   return s.kind !== "text"
-    ? { kind: s.kind, image: s.image_url ?? "", images: s.images?.map((i) => i.url), label: s.title, translation: "", lines: [] }
+    ? { kind: s.kind, image: s.image_url ?? "", images: s.images?.map((i) => i.url), fit: s.fit === "width" ? "width" : "height", label: s.title, translation: "", lines: [] }
     : { kind: "text", label: s.title, translation: "", lines: s.body.split("\n").filter((l) => l.trim()).map((text) => ({ verse: 0, text })) };
 }
 
@@ -256,11 +258,11 @@ export function Slides({
     const supabase = supabaseBrowser();
     const row = { title: title.trim().slice(0, 120), body: body.trim().slice(0, 2000), updated_at: new Date().toISOString() };
     const { data, error } = existing
-      ? await supabase.from("slides").update(row).eq("id", existing.id).select("id, kind, title, body, image_url, position, deck_id").single()
+      ? await supabase.from("slides").update(row).eq("id", existing.id).select("id, kind, title, body, image_url, position, deck_id, fit").single()
       : await supabase
           .from("slides")
           .insert({ ...row, church_id: churchId, kind: "text", position: nextPosition(), deck_id: deckId, created_by: userId })
-          .select("id, kind, title, body, image_url, position, deck_id")
+          .select("id, kind, title, body, image_url, position, deck_id, fit")
           .single();
     if (error || !data) return error?.message ?? "Couldn't save the slide.";
     const saved = data as SavedSlide;
@@ -356,6 +358,19 @@ export function Slides({
     setSlides((all) => all.map((x) => (x.id === s.id ? (saved as SavedSlide) : x)));
     currentRef.current = saved as SavedSlide;
     if (liveRef.current && selected === s.id) void screen.current?.show(toSlide(saved as SavedSlide));
+  }
+
+  /** A picture slide's fit: full height or full width. On screen at once if it's up. */
+  async function setFit(s: SavedSlide, fit: "height" | "width") {
+    const next = { ...s, fit };
+    setSlides((list) => list.map((x) => (x.id === s.id ? next : x)));
+    currentRef.current = next;
+    if (liveRef.current && selected === s.id) void screen.current?.show(toSlide(next));
+    const { error: e } = await supabaseBrowser().from("slides").update({ fit }).eq("id", s.id);
+    if (e) {
+      setSlides((list) => list.map((x) => (x.id === s.id ? s : x)));
+      setError(/fit/.test(e.message) ? "Saving the fit needs migration 0034. Ask your admin to run it." : e.message);
+    }
   }
 
   async function addPictures(s: SavedSlide, files: File[]) {
@@ -536,8 +551,21 @@ export function Slides({
           {current ? (
             <>
               <div className={`overflow-hidden rounded-lg ${onAir === current.id ? "ring-2 ring-negative" : "ring-1 ring-line"}`}>
-                <div className="aspect-video">
+                <div className="group relative aspect-video">
                   <SlideView slide={toSlide(current)} theme={current.kind === "text" ? display.scripture : undefined} muted />
+                  {/* Picture slides: full height (the default) or full width, on hover. */}
+                  {current.kind === "image" && (
+                    <button
+                      type="button"
+                      onClick={() => void setFit(current, current.fit === "width" ? "height" : "width")}
+                      title={current.fit === "width" ? "Fit height: show each picture's full height" : "Fill width: stretch each picture across the screen"}
+                      aria-label={current.fit === "width" ? "Fit height" : "Fill width"}
+                      className="absolute right-2 bottom-2 inline-flex h-8 items-center gap-1.5 rounded-full bg-black/60 px-3 text-xs font-bold text-white opacity-0 ring-1 ring-white/20 backdrop-blur-sm transition group-hover:opacity-100 hover:bg-black/80 focus-visible:opacity-100 active:scale-[0.97]"
+                    >
+                      {current.fit === "width" ? <StretchVertical size={14} /> : <StretchHorizontal size={14} />}
+                      {current.fit === "width" ? "Fit height" : "Fill width"}
+                    </button>
+                  )}
                 </div>
               </div>
               <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -633,7 +661,7 @@ export function Slides({
                 title={decksFull ? `The ${planName(plan)} plan has up to ${limits.decks} presentations` : "Make a presentation, then add its slides"}
                 onClick={() => setNaming("new")}
               >
-                <Plus size={14} /> New presentation
+                <Plus size={14} /> New
               </Button>
             </div>
             {naming === "new" && <DeckName onCancel={() => setNaming(null)} onSave={saveDeck} />}
@@ -667,7 +695,7 @@ export function Slides({
                 <li className="px-4 py-10 text-center">
                   <p className="text-sm text-muted">No presentations yet.</p>
                   <Button size="sm" variant="secondary" className="mt-4" onClick={() => setNaming("new")}>
-                    <Plus size={13} /> New presentation
+                    <Plus size={13} /> New
                   </Button>
                 </li>
               )}

@@ -92,6 +92,8 @@ export interface Slide {
   image?: string;
   /** Picture slides with several pictures, side by side (the first is `image`). */
   images?: string[];
+  /** Picture slides: each picture's full height on screen (the default), or its full width. */
+  fit?: "height" | "width";
   /** How the output draws it; added by the console as it sends the slide. */
   theme?: DisplayTheme;
 }

@@ -6,7 +6,7 @@ import { churchMember } from "./member";
 
 export const dynamic = "force-dynamic";
 
-const COLUMNS = "id, kind, title, body, image_url, images, position, expires_at, deck_id";
+const COLUMNS = "id, kind, title, body, image_url, images, position, expires_at, deck_id, fit";
 
 // Records a picture slide (one or more pictures just uploaded) or a video
 // slide. Only files in this church's own folder are accepted; the database

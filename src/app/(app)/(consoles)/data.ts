@@ -103,7 +103,7 @@ export async function loadSlides(m: Membership): Promise<SlidesData> {
     after(() => Promise.allSettled(files.map((x) => destroy(config, x.kind, x.id))));
   }
   const [{ data, error }, { data: plan }] = await Promise.all([
-    supabase.from("slides").select("id, kind, title, body, image_url, images, position, expires_at, deck_id").eq("church_id", m.churchId).order("position").order("created_at"),
+    supabase.from("slides").select("id, kind, title, body, image_url, images, position, expires_at, deck_id, fit").eq("church_id", m.churchId).order("position").order("created_at"),
     supabase.rpc("church_plan", { p_church: m.churchId }),
   ]);
   const { data: decks, error: deckError } = await supabase.from("slide_decks").select("id, name, position").eq("church_id", m.churchId).order("position").order("created_at");
