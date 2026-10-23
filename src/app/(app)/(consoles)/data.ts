@@ -62,24 +62,34 @@ export async function loadSongs(m: Membership): Promise<SongsData> {
   // Titles only, every church's songs and the shared library (the database
   // decides which rows this church can see, migration 0029). The words load in the browser.
   // The first page also says how many there are; the rest come at once.
+  // based_on: a church's own version of a song (migration 0030; without it, none).
+  let cols = "id, title, author, first_line, church_id, based_on";
   const page = (p: number, count = false) =>
     Promise.resolve(
       supabase
         .from("songs")
-        .select("id, title, author, first_line, church_id", count ? { count: "exact" } : undefined)
+        .select(cols, count ? { count: "exact" } : undefined)
         .order("title")
         .order("id")
         .range(p * PAGE, p * PAGE + PAGE - 1),
     );
-  const first = await page(0, true);
+  let first = await page(0, true);
+  if (first.error) {
+    cols = "id, title, author, first_line, church_id";
+    first = await page(0, true);
+  }
   const rest = await Promise.all(Array.from({ length: Math.max(0, Math.ceil((first.count ?? 0) / PAGE) - 1) }, (_, i) => page(i + 1)));
-  const library: LibrarySong[] = [];
+  type Row = { id: string; title: string; author: string; first_line: string; church_id: string | null; based_on?: string | null };
+  const rows: Row[] = [];
   for (const { data, error } of [first, ...rest]) {
     if (error) return { error: `Could not load songs: ${error.message}. Has migration 0008 been run?` };
-    for (const r of data ?? []) {
-      library.push({ id: r.id, title: r.title, author: r.author, firstLine: r.first_line, shared: r.church_id !== m.churchId });
-    }
+    rows.push(...((data ?? []) as unknown as Row[]));
   }
+  // This church's versions stand in for the songs they were made from.
+  const replaced = new Set(rows.filter((r) => r.church_id === m.churchId && r.based_on).map((r) => r.based_on));
+  const library: LibrarySong[] = rows
+    .filter((r) => !replaced.has(r.id))
+    .map((r) => ({ id: r.id, title: r.title, author: r.author, firstLine: r.first_line, shared: r.church_id !== m.churchId, basedOn: r.based_on ?? null }));
   const { data: setlists } = await setlistsQuery;
   return { library, setlists: (setlists ?? []) as Setlist[] };
 }

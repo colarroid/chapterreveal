@@ -57,8 +57,10 @@ export interface LibrarySong {
   title: string;
   author: string;
   firstLine: string;
-  /** Not this church's own (the shared library or another church's): read-only here. */
+  /** Not this church's own (the shared library or another church's). Editing it makes the church its own version. */
   shared: boolean;
+  /** This church's version of another song: the original's id. */
+  basedOn?: string | null;
 }
 
 type LibraryFilter = "all" | "church";
@@ -755,19 +757,57 @@ export function Worship({
     return folded.filter(({ key, words }) => key.includes(q) || (q.length >= 3 && words.includes(q))).map(({ s }) => s);
   }, [folded, inFilter, query]);
 
+  /** Opens a song at the start of its order. */
+  function open(id: string) {
+    const c = startOf(id);
+    currentRef.current = c;
+    setCurrent(c);
+  }
+
+  /** Points everything at another song id: open, Up next, playlists, the song's order. */
+  function moveTo(from: string, to: string) {
+    const cur = currentRef.current;
+    if (cur?.id === from) {
+      const c = { ...cur, id: to };
+      currentRef.current = c;
+      setCurrent(c);
+    }
+    setQueue((q) => q.map((x) => (x === from ? to : x)));
+    for (const list of setlists) {
+      if (list.song_ids.includes(from)) void saveSetlist(list.id, { song_ids: list.song_ids.map((x) => (x === from ? to : x)) });
+    }
+    const own = orders.get(from);
+    if (own) void saveOrder(to, own.slides, own.source);
+  }
+
   async function save(fields: SongFields, existing: FullSong | null): Promise<string | void> {
     const row = { ...fields, body: songBody(fields.slides), first_line: firstLine(fields.slides), updated_at: new Date().toISOString() };
     const supabase = supabaseBrowser();
-    const { data, error } = existing
-      ? await supabase.from("songs").update(row).eq("id", existing.id).select("id").single()
-      : await supabase.from("songs").insert({ ...row, church_id: churchId, created_by: userId, source: "manual" }).select("id").single();
-    if (error || !data) return error?.message ?? "Could not save the song.";
+    // Someone else's song (the shared library or another church's): the
+    // edit becomes this church's own version; everyone else keeps theirs.
+    const version = !!existing?.shared;
+    const { data, error } =
+      existing && !version
+        ? await supabase.from("songs").update(row).eq("id", existing.id).select("id").single()
+        : await supabase
+            .from("songs")
+            .insert({ ...row, church_id: churchId, created_by: userId, source: "manual", ...(version ? { based_on: existing!.id } : {}) })
+            .select("id")
+            .single();
+    if (error || !data) {
+      if (version && /based_on/.test(error?.message ?? "")) return "Saving your church's version needs migration 0030. Ask your admin to run it.";
+      if (error?.code === "23505") return "Your church already has a song with these words.";
+      return error?.message ?? "Could not save the song.";
+    }
     setEditing(null);
     const id = data.id as string;
 
-    // Into the console's songs straight away, not after a reload of them all.
-    const saved: FullSong = { id, ...fields, shared: false };
-    setSongs((list) => (list ? [...list.filter((s) => s.id !== id), saved].sort((a, b) => a.title.localeCompare(b.title)) : list));
+    // Into the console's songs straight away, not after a reload of them all;
+    // a version takes the original's place.
+    const saved: FullSong = { id, ...fields, shared: false, basedOn: version ? existing!.id : (existing?.basedOn ?? null) };
+    const gone = version ? existing!.id : id;
+    setSongs((list) => (list ? [...list.filter((s) => s.id !== id && s.id !== gone), saved].sort((a, b) => a.title.localeCompare(b.title)) : list));
+    if (version) moveTo(existing!.id, id);
     router.refresh(); // the library list beside it
 
     if (existing) return; // an edit: whatever was open stays open, now with the new words
@@ -775,35 +815,47 @@ export function Worship({
     // in Up next rather than interrupt.
     const presenting = liveRef.current && currentRef.current !== null;
     if (presenting) setQueue((q) => (q.includes(id) ? q : [...q, id]));
-    else {
-      currentRef.current = { id, slide: 0 };
-      setCurrent(startOf(id));
-    }
+    else open(id);
   }
 
   /** Opens a song from Up next. */
   function openQueued(id: string) {
     setQueue((q) => q.filter((x) => x !== id));
     setEditing(null);
-    currentRef.current = { id, slide: 0 };
-    setCurrent(startOf(id));
+    open(id);
   }
 
   async function remove(song: FullSong) {
-    const ok = await confirmDialog({
-      title: `Delete "${song.title}"?`,
-      body: "It's removed from your church's songs. This can't be undone.",
-      confirmLabel: "Delete",
-      danger: true,
-    });
+    // This church's version of another song: back to the original.
+    const original = song.basedOn ?? null;
+    const ok = await confirmDialog(
+      original
+        ? {
+            title: "Back to the original?",
+            body: `Your church's changes to "${song.title}" are removed, and the original comes back.`,
+            confirmLabel: "Use the original",
+          }
+        : {
+            title: `Delete "${song.title}"?`,
+            body: "It's removed from your church's songs, and from every church that uses it. This can't be undone.",
+            confirmLabel: "Delete",
+            danger: true,
+          },
+    );
     if (!ok) return;
     await supabaseBrowser().from("songs").delete().eq("id", song.id);
-    if (currentRef.current?.id === song.id) {
-      currentRef.current = null;
-      setCurrent(null);
-    }
     setSongs((list) => list?.filter((s) => s.id !== song.id) ?? list);
-    setQueue((q) => q.filter((x) => x !== song.id));
+    if (original) {
+      moveTo(song.id, original);
+      // The original was hidden behind the version: load the songs again to have it back.
+      void fetchAllSongs(churchId).then((all) => setSongs(all));
+    } else {
+      if (currentRef.current?.id === song.id) {
+        currentRef.current = null;
+        setCurrent(null);
+      }
+      setQueue((q) => q.filter((x) => x !== song.id));
+    }
     router.refresh();
   }
 
@@ -935,17 +987,28 @@ export function Worship({
                       <X size={13} /> Wrong song
                     </button>
                   )}
-                  {currentSong && !currentSong.shared && (
-                    <>
-                      <IconButton label="Edit song" onClick={() => setEditing(currentSong)}>
-                        <Pencil size={15} />
-                      </IconButton>
+                  {currentSong?.shared && <Chip>Shared</Chip>}
+                  {currentSong?.basedOn && <Chip tone="ok">Your version</Chip>}
+                  {currentSong && (
+                    <IconButton
+                      label={currentSong.shared ? "Edit for your church (other churches keep the original)" : "Edit song"}
+                      onClick={() => setEditing(currentSong)}
+                    >
+                      <Pencil size={15} />
+                    </IconButton>
+                  )}
+                  {currentSong?.basedOn ? (
+                    <IconButton label="Back to the original" onClick={() => void remove(currentSong)}>
+                      <Undo2 size={15} />
+                    </IconButton>
+                  ) : (
+                    currentSong &&
+                    !currentSong.shared && (
                       <IconButton label="Delete song" onClick={() => void remove(currentSong)} className="hover:text-negative">
                         <Trash2 size={15} />
                       </IconButton>
-                    </>
+                    )
                   )}
-                  {currentSong?.shared && <Chip>Shared</Chip>}
                 </div>
 
                 {/* Up next: songs added while another was on screen. */}
@@ -1133,7 +1196,7 @@ export function Worship({
           <SongEditor
             key={editing === "new" ? "new" : editing.id}
             initial={editing === "new" ? null : editing}
-            heading={editing === "new" ? "Add a song" : "Edit song"}
+            heading={editing === "new" ? "Add a song" : editing.shared ? "Edit for your church" : "Edit song"}
             onCancel={() => setEditing(null)}
             onSave={(f) => save(f, editing === "new" ? null : editing)}
           />
@@ -1167,8 +1230,7 @@ export function Worship({
             onChange={(id, song_ids) => void saveSetlist(id, { song_ids })}
             onOpen={(id) => {
               setEditing(null);
-              currentRef.current = { id, slide: 0 };
-              setCurrent(startOf(id));
+              open(id);
             }}
           />
           <label className="relative block">
@@ -1192,8 +1254,7 @@ export function Worship({
                 onAdd={activeSetlist ? addToSetlist : undefined}
                 onOpen={() => {
                   setEditing(null);
-                  currentRef.current = { id: s.id, slide: 0 };
-                  setCurrent(startOf(s.id));
+                  open(s.id);
                 }}
               />
             ))}
