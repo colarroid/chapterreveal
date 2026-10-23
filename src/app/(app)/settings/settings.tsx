@@ -158,7 +158,7 @@ export function Settings(p: Props) {
             <ChevronRight size={18} className="shrink-0 text-muted" />
           </Link>
         )}
-        <Section icon={MonitorPlay} title="Output page" description="All projections shows everything: scripture, lyrics and slides. For the livestream, add the scripture-only and lyrics-only links as separate Web Browser inputs in vMix or OBS; key the lower thirds on green.">
+        <Section icon={MonitorPlay} title="Output page" description="Links for your projector, and for vMix or OBS on the livestream.">
           {out ? (
             <>
               <CopyRow label="All projections: scripture, lyrics and slides (what Present opens)" value={out} />
