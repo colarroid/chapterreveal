@@ -526,6 +526,18 @@ export function Worship({
 
   // Wrong song (W): off the screen (the background stays), no longer
   // followed, and not put up or suggested again for a couple of minutes.
+  // Close (×): done with this song. Its cards go, its words come off the
+  // screen if they're up, and it's no longer followed.
+  const closeSong = useCallback(() => {
+    const cur = currentRef.current;
+    if (!cur) return;
+    if (!clearedRef.current) clear();
+    if (engine.current.follower.lock?.id === cur.id) engine.current.follower.unlock();
+    currentRef.current = null;
+    setCurrent(null);
+    syncLock.current?.();
+  }, [clear]);
+
   const rejectSong = useCallback(() => {
     const cur = currentRef.current;
     if (!cur) return;
@@ -792,6 +804,23 @@ export function Worship({
     else open(id);
   }
 
+  // For the rows of the song list: kept stable, reading the latest state.
+  const rowActions = useRef<{ edit: (id: string) => void; remove: (id: string) => void }>({ edit: () => {}, remove: () => {} });
+  useEffect(() => {
+    rowActions.current = {
+      edit: (id) => {
+        const song = songs?.[byId.get(id) ?? -1];
+        if (song) setEditing(song);
+      },
+      remove: (id) => {
+        const song = songs?.[byId.get(id) ?? -1];
+        if (song) void remove(song);
+      },
+    };
+  });
+  const editRow = useCallback((id: string) => rowActions.current.edit(id), []);
+  const removeRow = useCallback((id: string) => rowActions.current.remove(id), []);
+
   /** Opens a song from Up next. */
   function openQueued(id: string) {
     setQueue((q) => q.filter((x) => x !== id));
@@ -964,24 +993,9 @@ export function Worship({
                   {currentSong?.shared && <Chip>Shared</Chip>}
                   {currentSong?.basedOn && <Chip tone="ok">Your version</Chip>}
                   {currentSong && (
-                    <IconButton
-                      label={currentSong.shared ? "Edit for your church (other churches keep the original)" : "Edit song"}
-                      onClick={() => setEditing(currentSong)}
-                    >
-                      <Pencil size={15} />
+                    <IconButton label="Close this song (its words come off the screen if they're up)" onClick={closeSong}>
+                      <X size={16} />
                     </IconButton>
-                  )}
-                  {currentSong?.basedOn ? (
-                    <IconButton label="Back to the original" onClick={() => void remove(currentSong)}>
-                      <Undo2 size={15} />
-                    </IconButton>
-                  ) : (
-                    currentSong &&
-                    !currentSong.shared && (
-                      <IconButton label="Delete song" onClick={() => void remove(currentSong)} className="hover:text-negative">
-                        <Trash2 size={15} />
-                      </IconButton>
-                    )
                   )}
                 </div>
 
@@ -1219,6 +1233,8 @@ export function Worship({
                 active={s.id === current?.id}
                 inSetlist={!!activeSetlist?.song_ids.includes(s.id)}
                 onAdd={activeSetlist ? addToSetlist : undefined}
+                onEdit={songs ? editRow : undefined}
+                onRemove={songs ? removeRow : undefined}
                 onOpen={() => {
                   setEditing(null);
                   open(s.id);
@@ -1248,6 +1264,8 @@ const LibraryRow = memo(function LibraryRow({
   inSetlist,
   onAdd,
   onOpen,
+  onEdit,
+  onRemove,
 }: {
   song: LibrarySong;
   active: boolean;
@@ -1255,6 +1273,9 @@ const LibraryRow = memo(function LibraryRow({
   /** Present while a setlist is chosen. */
   onAdd?: (id: string) => void;
   onOpen: () => void;
+  /** Present once the songs' words have loaded. */
+  onEdit?: (id: string) => void;
+  onRemove?: (id: string) => void;
 }) {
   return (
     <li className={`group flex items-center rounded-md transition ${active ? "bg-surface-3" : "hover:bg-surface-2"}`}>
@@ -1264,6 +1285,31 @@ const LibraryRow = memo(function LibraryRow({
         </span>
         <span className="block truncate text-xs text-muted">{song.firstLine || song.author || " "}</span>
       </button>
+      {/* On hover (or keyboard focus): edit, and delete (the church's own songs)
+          or back to the original (the church's version of another's). */}
+      {onEdit && (
+        <span className="flex shrink-0 items-center opacity-0 transition group-hover:opacity-100 focus-within:opacity-100">
+          <IconButton
+            label={song.shared ? "Edit for your church (other churches keep the original)" : "Edit song"}
+            onClick={() => onEdit(song.id)}
+            className="h-8 w-8 hover:bg-ink/10!"
+          >
+            <Pencil size={14} />
+          </IconButton>
+          {onRemove &&
+            (song.basedOn ? (
+              <IconButton label="Back to the original" onClick={() => onRemove(song.id)} className="h-8 w-8 hover:bg-ink/10!">
+                <Undo2 size={14} />
+              </IconButton>
+            ) : (
+              !song.shared && (
+                <IconButton label="Delete song" onClick={() => onRemove(song.id)} className="h-8 w-8 hover:bg-ink/10! hover:text-negative">
+                  <Trash2 size={14} />
+                </IconButton>
+              )
+            ))}
+        </span>
+      )}
       {onAdd &&
         (inSetlist ? (
           <span className="mr-2 shrink-0 text-[10px] font-bold tracking-wider text-faint uppercase">In playlist</span>
