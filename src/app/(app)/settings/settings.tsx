@@ -158,16 +158,16 @@ export function Settings(p: Props) {
             <ChevronRight size={18} className="shrink-0 text-muted" />
           </Link>
         )}
-        <Section icon={MonitorPlay} title="Output page" description="The projector link shows everything. For the livestream, add the scripture and lyrics links as separate Web Browser inputs in vMix or OBS; key the Lower Third ones on green.">
+        <Section icon={MonitorPlay} title="Output page" description="All projections shows everything: scripture, lyrics and slides. For the livestream, add the scripture-only and lyrics-only links as separate Web Browser inputs in vMix or OBS; key the lower thirds on green.">
           {out ? (
             <>
-              <CopyRow label="Projector: scripture and lyrics (what Present opens)" value={out} />
-              <CopyRow label="Scripture Projection Full Screen" value={`${out}/scripture`} />
-              <CopyRow label="Scripture Projection Lower Third (Green background)" value={`${out}/scripture/lower`} />
-              <CopyRow label="Lyrics Projection Full Screen" value={`${out}/lyrics`} />
-              <CopyRow label="Lyrics Projection Lower Third (Green background)" value={`${out}/lyrics/lower`} />
-              <CopyRow label="Frame: scripture and lyrics (Green background, any size)" value={`${out}/frame?bg=green`} />
-              <CopyRow label="Frame: scripture, lyrics and slides (projector look, any size)" value={`${out}/frame`} />
+              <CopyRow label="All projections: scripture, lyrics and slides (what Present opens)" value={out} />
+              <CopyRow label="Scripture only: full screen" value={`${out}/scripture`} />
+              <CopyRow label="Scripture only: lower third, green background" value={`${out}/scripture/lower`} />
+              <CopyRow label="Lyrics only: full screen" value={`${out}/lyrics`} />
+              <CopyRow label="Lyrics only: lower third, green background" value={`${out}/lyrics/lower`} />
+              <CopyRow label="Frame, scripture and lyrics: green background, any size" value={`${out}/frame?bg=green`} />
+              <CopyRow label="Frame, all projections: projector look, any size" value={`${out}/frame`} />
               <p className="text-xs text-muted">
                 Set browser inputs to 1920 × 1080, except the Frames: set those to the size of the area in your own lower-third design, then place them on
                 it. The words fill the frame: on green to key out (change ?bg=green to ?bg=clear for a see-through background), or in the projector&apos;s
