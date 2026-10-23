@@ -1,7 +1,7 @@
 "use client";
 
-// Every song's words for the worship console: the shared library and every
-// church's songs (only the church's own can be edited). Loading them all takes a few seconds, so they're kept:
+// Every song's words in the church's library, for the worship console (the
+// public library is searched separately, and copied from). Loading them all takes a few seconds, so they're kept:
 //   - in memory, so switching tabs and coming back is instant;
 //   - in the browser (Cache Storage), so the next visit opens straight away
 //     while a fresh copy downloads in the background.
@@ -16,9 +16,7 @@ export interface FullSong {
   copyright: string;
   ccli_number: string;
   slides: SongSlide[];
-  /** Not this church's own (the shared library or another church's). */
-  shared: boolean;
-  /** This church's version of another song: the original's id. */
+  /** Copied from the public library: the public song's id. */
   basedOn?: string | null;
 }
 
@@ -69,34 +67,25 @@ export function forgetSongs() {
 /** Downloads every song, all pages at once. */
 export async function fetchAllSongs(churchId: string): Promise<FullSong[]> {
   const supabase = supabaseBrowser();
-  const { count, error } = await supabase.from("songs").select("id", { count: "exact", head: true });
+  const { count, error } = await supabase.from("songs").select("id", { count: "exact", head: true }).eq("church_id", churchId);
   if (error) throw error;
   const pages = Math.max(1, Math.ceil((count ?? 0) / PAGE));
-  const load = (cols: string) =>
-    Promise.all(
-      Array.from({ length: pages }, (_, p) =>
-        supabase
-          .from("songs")
-          .select(cols)
-          .order("title")
-          .order("id")
-          .range(p * PAGE, p * PAGE + PAGE - 1),
-      ),
-    );
-  // based_on: a church's own version of a song (migration 0030; without it, none).
-  let results = await load("id, title, author, copyright, ccli_number, slides, church_id, based_on");
-  if (results.some((r) => r.error)) results = await load("id, title, author, copyright, ccli_number, slides, church_id");
-  type Row = Omit<FullSong, "shared" | "basedOn"> & { church_id: string | null; based_on?: string | null };
-  const rows: Row[] = [];
+  const results = await Promise.all(
+    Array.from({ length: pages }, (_, p) =>
+      supabase
+        .from("songs")
+        .select("id, title, author, copyright, ccli_number, slides, based_on")
+        .eq("church_id", churchId)
+        .order("title")
+        .order("id")
+        .range(p * PAGE, p * PAGE + PAGE - 1),
+    ),
+  );
+  const out: FullSong[] = [];
   for (const { data, error: e } of results) {
     if (e) throw e;
-    rows.push(...((data ?? []) as unknown as Row[]));
+    for (const { based_on, ...r } of (data ?? []) as (Omit<FullSong, "basedOn"> & { based_on: string | null })[]) out.push({ ...r, basedOn: based_on });
   }
-  // This church's versions stand in for the songs they were made from.
-  const replaced = new Set(rows.filter((r) => r.church_id === churchId && r.based_on).map((r) => r.based_on));
-  const out: FullSong[] = rows
-    .filter((r) => !replaced.has(r.id))
-    .map(({ church_id, based_on, ...r }) => ({ ...r, shared: church_id !== churchId, basedOn: based_on ?? null }));
   // Songs added between the count and the pages land on a page beyond the
   // last; they arrive on the next refresh.
   return out;

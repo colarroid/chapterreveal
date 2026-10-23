@@ -42,13 +42,14 @@ import { FollowEngine, usageLift, type Suggested } from "@/lib/songs/engine";
 import { SongIndex } from "@/lib/songs/matcher";
 import { cleanOrder, learnOrder, nextPosition, partStarts, positionOf, sameWords, writtenOrder, type Order, type OrderSource } from "@/lib/songs/order";
 import { fetchAllSongs, keepSongs, songsAreFresh, songsInMemory, storedSongs, type FullSong } from "@/lib/songs/store";
-import { firstLine, songBody } from "@/lib/songs/songs";
+import { firstLine, songBody, type SongSlide } from "@/lib/songs/songs";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { EndServiceButton, LevelMeter } from "../dashboard/console";
 import { useLiveService } from "../dashboard/use-live-service";
 import { useConsoleActive } from "../active";
 import { SwitchTrack } from "@/components/motion";
 import { ArrangeOrder } from "./arrange";
+import { PublicLibrary } from "./public-library";
 import { SetlistPanel, type Setlist } from "./setlist";
 import { SongEditor, type SongFields } from "./song-editor";
 
@@ -57,9 +58,7 @@ export interface LibrarySong {
   title: string;
   author: string;
   firstLine: string;
-  /** Not this church's own (the shared library or another church's). Editing it makes the church its own version. */
-  shared: boolean;
-  /** This church's version of another song: the original's id. */
+  /** Copied from the public library: the public song's id. */
   basedOn?: string | null;
 }
 
@@ -265,11 +264,12 @@ export function Worship({
   const selectedSlide = currentSong && current ? toSlide(currentSong, current.slide) : null;
 
   // ---- The order songs are sung in ------------------------------------------
-  // This church's order for a song (learned in a service, or arranged by
-  // hand), else the one most churches use for a shared song, else as
-  // written (lib/songs/order.ts, migration 0028).
+  // This church's order for a song (learned in its services, or arranged by
+  // hand: its variation), else the shared profile of a copied public song
+  // (how it's most often sung across every church's services), else as
+  // written (lib/songs/order.ts, migrations 0028 and 0031).
   const [orders, setOrders] = useState(new Map<string, { slides: Order; source: "sung" | "arranged" }>());
-  const [common, setCommon] = useState(new Map<string, { slides: Order; churches: number }>());
+  const [profiles, setProfiles] = useState(new Map<string, { slides: Order; performances: number }>());
   const [asWritten, setAsWritten] = useState(false);
   // Arranging the open song by hand (./arrange.tsx); the console's keys rest meanwhile.
   const [arranging, setArranging] = useState(false);
@@ -285,26 +285,26 @@ export function Worship({
       .select("song_id, slides, source")
       .then(({ data }) => setOrders(new Map((data ?? []).map((r) => [r.song_id as string, { slides: r.slides as Order, source: r.source as "sung" | "arranged" }]))));
     void supabase
-      .rpc("common_song_orders")
+      .rpc("song_profiles")
       .then(({ data }) =>
-        setCommon(new Map(((data ?? []) as { song_id: string; slides: Order; churches: number }[]).map((r) => [r.song_id, { slides: r.slides, churches: r.churches }]))),
+        setProfiles(new Map(((data ?? []) as { song_id: string; slides: Order; performances: number }[]).map((r) => [r.song_id, { slides: r.slides, performances: r.performances }]))),
       );
   }, [churchId]);
   const orderOf = useCallback(
-    (song: { id: string; slides: unknown[] } | null): { order: Order; source: OrderSource; churches?: number } => {
+    (song: { id: string; slides: unknown[] } | null): { order: Order; source: OrderSource; performances?: number } => {
       if (!song) return { order: [], source: "written" };
       const n = song.slides.length;
       if (!asWritten) {
         const own = orders.get(song.id);
         const mine = own && cleanOrder(own.slides, n);
         if (mine) return { order: mine, source: own.source };
-        const c = common.get(song.id);
-        const theirs = c && cleanOrder(c.slides, n);
-        if (theirs) return { order: theirs, source: "common", churches: c.churches };
+        const c = profiles.get(song.id);
+        const usual = c && cleanOrder(c.slides, n);
+        if (usual) return { order: usual, source: "common", performances: c.performances };
       }
       return { order: writtenOrder(n), source: "written" };
     },
-    [orders, common, asWritten],
+    [orders, profiles, asWritten],
   );
   const orderOfRef = useRef(orderOf);
   useEffect(() => {
@@ -354,8 +354,13 @@ export function Worship({
     path.current = null;
     if (!p || !serviceRef.current) return;
     const learned = learnOrder(p.steps, Date.now());
+    if (!learned) return;
+    // Every performance improves the public song's shared profile (copies
+    // only, unedited; the database checks).
+    void supabaseBrowser().rpc("record_performance", { p_song: p.id, p_slides: learned, p_service: serviceRef.current });
+    // The church's own order: what it sang, unless arranged by hand.
     const own = ordersRef.current.get(p.id);
-    if (!learned || own?.source === "arranged" || (own && own.slides.join() === learned.join())) return;
+    if (own?.source === "arranged" || (own && own.slides.join() === learned.join())) return;
     void saveOrder(p.id, learned, "sung");
   }, [saveOrder]);
 
@@ -731,6 +736,10 @@ export function Worship({
   // ---- Library and editing --------------------------------------------------
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState<FullSong | "new" | null>(null);
+  // The song list: the church's own, or the public library to copy from.
+  const [browse, setBrowse] = useState<"mine" | "public">("mine");
+  // Public songs this church has copied already.
+  const copied = useMemo(() => new Set([...library, ...(songs ?? [])].map((x) => x.basedOn).filter((x): x is string => !!x)), [library, songs]);
   /** Songs added while another was being presented, waiting their turn. */
   const [queue, setQueue] = useState<string[]>([]);
   const folded = useMemo(() => {
@@ -750,59 +759,55 @@ export function Worship({
     setCurrent(c);
   }
 
-  /** Points everything at another song id: open, Up next, playlists, the song's order. */
-  function moveTo(from: string, to: string) {
-    const cur = currentRef.current;
-    if (cur?.id === from) {
-      const c = { ...cur, id: to };
-      currentRef.current = c;
-      setCurrent(c);
-    }
-    setQueue((q) => q.map((x) => (x === from ? to : x)));
-    for (const list of setlists) {
-      if (list.song_ids.includes(from)) void saveSetlist(list.id, { song_ids: list.song_ids.map((x) => (x === from ? to : x)) });
-    }
-    const own = orders.get(from);
-    if (own) void saveOrder(to, own.slides, own.source);
+  /** Puts a saved song into the console's songs straight away, not after a reload of them all. */
+  function keep(saved: FullSong) {
+    setSongs((list) => (list ? [...list.filter((x) => x.id !== saved.id), saved].sort((a, b) => a.title.localeCompare(b.title)) : list));
+    router.refresh(); // the library list beside it
+  }
+
+  /** A new song opens at once, unless one is being presented: then it waits in Up next. */
+  function arrive(id: string) {
+    if (liveRef.current && currentRef.current !== null) setQueue((q) => (q.includes(id) ? q : [...q, id]));
+    else open(id);
   }
 
   async function save(fields: SongFields, existing: FullSong | null): Promise<string | void> {
     const row = { ...fields, body: songBody(fields.slides), first_line: firstLine(fields.slides), updated_at: new Date().toISOString() };
     const supabase = supabaseBrowser();
-    // Someone else's song (the shared library or another church's): the
-    // edit becomes this church's own version; everyone else keeps theirs.
-    const version = !!existing?.shared;
-    const { data, error } =
-      existing && !version
-        ? await supabase.from("songs").update(row).eq("id", existing.id).select("id").single()
-        : await supabase
-            .from("songs")
-            .insert({ ...row, church_id: churchId, created_by: userId, source: "manual", ...(version ? { based_on: existing!.id } : {}) })
-            .select("id")
-            .single();
-    if (error || !data) {
-      if (version && /based_on/.test(error?.message ?? "")) return "Saving your church's version needs migration 0030. Ask your admin to run it.";
-      if (error?.code === "23505") return "Your church already has a song with these words.";
-      return error?.message ?? "Could not save the song.";
-    }
+    const { data, error } = existing
+      ? await supabase.from("songs").update(row).eq("id", existing.id).select("id").single()
+      : await supabase.from("songs").insert({ ...row, church_id: churchId, created_by: userId, source: "manual" }).select("id").single();
+    if (error || !data) return error?.code === "23505" ? "Your library already has a song with these words." : (error?.message ?? "Could not save the song.");
     setEditing(null);
     const id = data.id as string;
-
-    // Into the console's songs straight away, not after a reload of them all;
-    // a version takes the original's place.
-    const saved: FullSong = { id, ...fields, shared: false, basedOn: version ? existing!.id : (existing?.basedOn ?? null) };
-    const gone = version ? existing!.id : id;
-    setSongs((list) => (list ? [...list.filter((s) => s.id !== id && s.id !== gone), saved].sort((a, b) => a.title.localeCompare(b.title)) : list));
-    if (version) moveTo(existing!.id, id);
-    router.refresh(); // the library list beside it
-
-    if (existing) return; // an edit: whatever was open stays open, now with the new words
-    // A new song opens at once, unless one is being presented: then it waits
-    // in Up next rather than interrupt.
-    const presenting = liveRef.current && currentRef.current !== null;
-    if (presenting) setQueue((q) => (q.includes(id) ? q : [...q, id]));
-    else open(id);
+    keep({ id, ...fields, basedOn: existing?.basedOn ?? null });
+    // An edit: whatever was open stays open, now with the new words.
+    if (!existing) arrive(id);
   }
+
+  /**
+   * Copy to My Library: the public song becomes the church's own, linked to
+   * it for good (based_on), so it can be edited here and how it's sung here
+   * feeds the public song's shared profile (migration 0031).
+   */
+  const copyFromPublic = useCallback(
+    async (publicId: string): Promise<string | void> => {
+      const supabase = supabaseBrowser();
+      const { data: src } = await supabase.from("songs").select("title, author, copyright, ccli_number, slides, body, first_line").eq("id", publicId).is("church_id", null).maybeSingle();
+      if (!src) return "This song is no longer in the public library.";
+      const { data, error } = await supabase
+        .from("songs")
+        .insert({ ...src, church_id: churchId, created_by: userId, source: "manual", based_on: publicId })
+        .select("id")
+        .single();
+      if (error || !data) return error?.code === "23505" ? "It's already in your library." : (error?.message ?? "Could not copy the song.");
+      const id = data.id as string;
+      keep({ id, title: src.title, author: src.author, copyright: src.copyright, ccli_number: src.ccli_number, slides: src.slides as SongSlide[], basedOn: publicId });
+      arrive(id);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keep/arrive read refs and setters only
+    [churchId, userId],
+  );
 
   // For the rows of the song list: kept stable, reading the latest state.
   const rowActions = useRef<{ edit: (id: string) => void; remove: (id: string) => void }>({ edit: () => {}, remove: () => {} });
@@ -829,36 +834,22 @@ export function Worship({
   }
 
   async function remove(song: FullSong) {
-    // This church's version of another song: back to the original.
-    const original = song.basedOn ?? null;
-    const ok = await confirmDialog(
-      original
-        ? {
-            title: "Back to the original?",
-            body: `Your church's changes to "${song.title}" are removed, and the original comes back.`,
-            confirmLabel: "Use the original",
-          }
-        : {
-            title: `Delete "${song.title}"?`,
-            body: "It's removed from your church's songs, and from every church that uses it. This can't be undone.",
-            confirmLabel: "Delete",
-            danger: true,
-          },
-    );
+    const ok = await confirmDialog({
+      title: `Delete "${song.title}"?`,
+      body: song.basedOn
+        ? "It's removed from your church's library. The public library keeps it, and you can copy it again."
+        : "It's removed from your church's library. This can't be undone.",
+      confirmLabel: "Delete",
+      danger: true,
+    });
     if (!ok) return;
     await supabaseBrowser().from("songs").delete().eq("id", song.id);
-    setSongs((list) => list?.filter((s) => s.id !== song.id) ?? list);
-    if (original) {
-      moveTo(song.id, original);
-      // The original was hidden behind the version: load the songs again to have it back.
-      void fetchAllSongs(churchId).then((all) => setSongs(all));
-    } else {
-      if (currentRef.current?.id === song.id) {
-        currentRef.current = null;
-        setCurrent(null);
-      }
-      setQueue((q) => q.filter((x) => x !== song.id));
+    if (currentRef.current?.id === song.id) {
+      currentRef.current = null;
+      setCurrent(null);
     }
+    setSongs((list) => list?.filter((x) => x.id !== song.id) ?? list);
+    setQueue((q) => q.filter((x) => x !== song.id));
     router.refresh();
   }
 
@@ -990,8 +981,6 @@ export function Worship({
                       <X size={13} /> Wrong song
                     </button>
                   )}
-                  {currentSong?.shared && <Chip>Shared</Chip>}
-                  {currentSong?.basedOn && <Chip tone="ok">Your version</Chip>}
                   {currentSong && (
                     <IconButton label="Close this song (its words come off the screen if they're up)" onClick={closeSong}>
                       <X size={16} />
@@ -1044,8 +1033,8 @@ export function Worship({
                 {currentSong && (
                   <OrderBar
                     source={currentOrder.source}
-                    churches={currentOrder.churches}
-                    hasOrder={orders.has(currentSong.id) || common.has(currentSong.id)}
+                    performances={currentOrder.performances}
+                    hasOrder={orders.has(currentSong.id) || profiles.has(currentSong.id)}
                     asWritten={asWritten}
                     onWritten={setAsWritten}
                     arranging={arranging}
@@ -1184,7 +1173,7 @@ export function Worship({
           <SongEditor
             key={editing === "new" ? "new" : editing.id}
             initial={editing === "new" ? null : editing}
-            heading={editing === "new" ? "Add a song" : editing.shared ? "Edit for your church" : "Edit song"}
+            heading={editing === "new" ? "Add a song" : "Edit song"}
             onCancel={() => setEditing(null)}
             onSave={(f) => save(f, editing === "new" ? null : editing)}
           />
@@ -1192,13 +1181,36 @@ export function Worship({
       ) : (
         <aside className="flex min-h-[460px] flex-col gap-3 card p-3 lg:min-h-0">
           <div className="flex items-center gap-2 px-1 pt-1">
-            <h2 className="font-bold">Songs</h2>
-            <span className="text-sm text-muted tabular-nums">{library.length.toLocaleString()}</span>
+            <h2 className="sr-only">Songs</h2>
+            {/* The church's own songs, or the public library to copy from. */}
+            <div className="inline-flex min-w-0 rounded-full bg-surface-2 p-0.5" role="group" aria-label="Which songs">
+              {(
+                [
+                  ["mine", "My library"],
+                  ["public", "Public library"],
+                ] as const
+              ).map(([v, label]) => (
+                <button
+                  key={v}
+                  type="button"
+                  aria-pressed={browse === v}
+                  onClick={() => setBrowse(v)}
+                  className={`h-8 rounded-full px-3 text-xs font-bold whitespace-nowrap transition ${browse === v ? "bg-bg text-ink shadow-card" : "text-muted hover:text-ink"}`}
+                >
+                  {label}
+                  {v === "mine" && <span className="ml-1.5 font-semibold text-faint tabular-nums">{library.length.toLocaleString()}</span>}
+                </button>
+              ))}
+            </div>
             {!songs && !loadError && <LoaderCircle size={14} className="animate-spin text-faint" />}
-            <Button size="sm" variant="secondary" className="ml-auto" onClick={() => setEditing("new")}>
+            <Button size="sm" variant="secondary" className="ml-auto shrink-0" onClick={() => setEditing("new")}>
               <Plus size={13} /> Add song
             </Button>
           </div>
+          {browse === "public" ? (
+            <PublicLibrary copied={copied} onCopy={copyFromPublic} />
+          ) : (
+          <>
           <SetlistPanel
             setlists={setlists}
             activeId={setlistId}
@@ -1245,13 +1257,20 @@ export function Worship({
             {library.length > 0 && matches.length === 0 && <li className="px-3 py-8 text-center text-sm text-muted">No songs match.</li>}
             {library.length === 0 && (
               <li className="px-4 py-10 text-center">
-                <p className="text-sm text-muted">No songs yet. Add one: paste the lyrics from anywhere.</p>
-                <Button size="sm" variant="secondary" className="mt-4" onClick={() => setEditing("new")}>
-                  <Plus size={13} /> Add song
-                </Button>
+                <p className="text-sm text-muted">No songs yet. Paste the lyrics from anywhere, or copy songs from the public library.</p>
+                <div className="mt-4 flex justify-center gap-2">
+                  <Button size="sm" variant="secondary" onClick={() => setEditing("new")}>
+                    <Plus size={13} /> Add song
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setBrowse("public")}>
+                    Public library
+                  </Button>
+                </div>
               </li>
             )}
           </ol>
+          </>
+          )}
         </aside>
       )}
     </div>
@@ -1285,29 +1304,17 @@ const LibraryRow = memo(function LibraryRow({
         </span>
         <span className="block truncate text-xs text-muted">{song.firstLine || song.author || " "}</span>
       </button>
-      {/* On hover (or keyboard focus): edit, and delete (the church's own songs)
-          or back to the original (the church's version of another's). */}
+      {/* On hover (or keyboard focus): edit and delete. */}
       {onEdit && (
         <span className="flex shrink-0 items-center opacity-0 transition group-hover:opacity-100 focus-within:opacity-100">
-          <IconButton
-            label={song.shared ? "Edit for your church (other churches keep the original)" : "Edit song"}
-            onClick={() => onEdit(song.id)}
-            className="h-8 w-8 hover:bg-ink/10!"
-          >
+          <IconButton label="Edit song" onClick={() => onEdit(song.id)} className="h-8 w-8 hover:bg-ink/10!">
             <Pencil size={14} />
           </IconButton>
-          {onRemove &&
-            (song.basedOn ? (
-              <IconButton label="Back to the original" onClick={() => onRemove(song.id)} className="h-8 w-8 hover:bg-ink/10!">
-                <Undo2 size={14} />
-              </IconButton>
-            ) : (
-              !song.shared && (
-                <IconButton label="Delete song" onClick={() => onRemove(song.id)} className="h-8 w-8 hover:bg-ink/10! hover:text-negative">
-                  <Trash2 size={14} />
-                </IconButton>
-              )
-            ))}
+          {onRemove && (
+            <IconButton label="Delete song" onClick={() => onRemove(song.id)} className="h-8 w-8 hover:bg-ink/10! hover:text-negative">
+              <Trash2 size={14} />
+            </IconButton>
+          )}
         </span>
       )}
       {onAdd &&
@@ -1328,7 +1335,7 @@ const LibraryRow = memo(function LibraryRow({
  */
 function OrderBar({
   source,
-  churches,
+  performances,
   hasOrder,
   asWritten,
   onWritten,
@@ -1337,7 +1344,7 @@ function OrderBar({
   onArrange,
 }: {
   source: OrderSource;
-  churches?: number;
+  performances?: number;
   hasOrder: boolean;
   asWritten: boolean;
   onWritten: (on: boolean) => void;
@@ -1351,7 +1358,7 @@ function OrderBar({
       : source === "arranged"
         ? "As you arranged it"
         : source === "common"
-          ? `As ${churches && churches > 1 ? `${churches} churches sing` : "another church sings"} it`
+          ? `As it's usually sung${performances ? ` (${performances} service${performances === 1 ? "" : "s"})` : ""}`
           : hasOrder
             ? "As written"
             : "As written. The order you sing it is learned in the service.";
