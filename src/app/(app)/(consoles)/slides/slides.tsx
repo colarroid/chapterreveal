@@ -425,7 +425,12 @@ export function Slides({
     });
     if (!ok) return;
     // Pictures and videos through the server, so their files are deleted too.
-    for (const x of inIt.filter((x) => x.kind !== "text")) await fetch(`/api/slides/${x.id}`, { method: "DELETE" });
+    // If one can't be deleted, stop: the presentation stays, so nothing is left behind in storage.
+    for (const x of inIt.filter((x) => x.kind !== "text")) {
+      const res = await fetch(`/api/slides/${x.id}`, { method: "DELETE" });
+      if (!res.ok) return setError(((await res.json().catch(() => ({}))) as { error?: string }).error ?? `Couldn't delete "${nameOf(x)}". Try again.`);
+      setSlides((list) => list.filter((y) => y.id !== x.id));
+    }
     const { error: e } = await supabaseBrowser().from("slide_decks").delete().eq("id", d.id);
     if (e) return setError(e.message);
     if (liveRef.current && inIt.some((x) => x.id === selected)) void screen.current?.show(null);
@@ -886,15 +891,17 @@ function DeckName({ initial = "", onSave, onCancel }: { initial?: string; onSave
             }
           }}
           maxLength={80}
-          placeholder="Name it, e.g. Sunday announcements"
+          placeholder="Title"
+          aria-label="Presentation title"
           className="inset-field h-9 min-w-0 flex-1 rounded-md bg-bg px-3 text-sm"
         />
         <Button type="submit" size="sm" className="h-9!" loading={saving}>
+          {!saving && !initial && <Plus size={14} />}
           {initial ? "Save" : "Create"}
         </Button>
-        <Button type="button" size="sm" variant="ghost" className="h-9!" onClick={onCancel}>
-          Cancel
-        </Button>
+        <IconButton label="Cancel" onClick={onCancel} className="h-9 w-9">
+          <X size={16} />
+        </IconButton>
       </div>
       {error && <Notice tone="error">{error}</Notice>}
     </form>
