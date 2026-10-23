@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BRIEF_MS, cleanOrder, isWritten, learnOrder, positionOf, writtenOrder } from "./order";
+import { BRIEF_MS, cleanOrder, isWritten, learnOrder, orderFromParts, partsFromOrder, positionOf, songParts, writtenOrder } from "./order";
 
 describe("song order", () => {
   it("learns the order sung, chorus repeats and all", () => {
@@ -48,5 +48,61 @@ describe("song order", () => {
     expect(writtenOrder(3)).toEqual([0, 1, 2]);
     expect(isWritten([0, 1, 2], 3)).toBe(true);
     expect(isWritten([0, 1, 1, 2], 3)).toBe(false);
+  });
+});
+
+describe("song parts", () => {
+  // Like a songbook song: no labels, the chorus written out each time.
+  const C = ["Bless the Lord oh my soul", "Worship His holy name", "Sing like never before"];
+  const songbook = [
+    ...C,
+    "The sun comes up", "It's a new day dawning",
+    ...C,
+    "You're rich in love", "And You're slow to anger",
+    ...C,
+    "Bless the Lord",
+  ].map((text) => ({ text }));
+
+  it("finds the chorus and verses of a song without labels", () => {
+    const { parts, written } = songParts(songbook);
+    expect(parts.map((p) => [p.name, p.slides.length, p.firstLine])).toEqual([
+      ["Chorus", 3, "Bless the Lord oh my soul"],
+      ["Verse 1", 2, "The sun comes up"],
+      ["Verse 2", 2, "You're rich in love"],
+      ["Verse 3", 1, "Bless the Lord"],
+    ]);
+    expect(written).toEqual([0, 1, 0, 2, 0, 3]);
+  });
+
+  it("splits a chorus sung twice in a row into two", () => {
+    const { written } = songParts([...C, ...C, "A verse line"].map((text) => ({ text })));
+    expect(written).toEqual([0, 0, 1]);
+  });
+
+  it("uses labels when the song has them", () => {
+    const { parts, written } = songParts([
+      { label: "Verse 1", text: "a" },
+      { text: "b" },
+      { label: "Chorus", text: "c" },
+      { label: "Verse 2", text: "d" },
+      { label: "Chorus", text: "c" },
+    ]);
+    expect(parts.map((p) => [p.name, p.slides])).toEqual([
+      ["Verse 1", [0, 1]],
+      ["Chorus", [2]],
+      ["Verse 2", [3]],
+    ]);
+    expect(written).toEqual([0, 1, 2, 1]);
+  });
+
+  it("turns parts into slides and back", () => {
+    const { parts } = songParts(songbook);
+    const order = orderFromParts(parts, [0, 1, 0, 0, 3]);
+    expect(order).toEqual([0, 1, 2, 3, 4, 0, 1, 2, 0, 1, 2, 13]);
+    expect(partsFromOrder(parts, order, songbook)).toEqual([0, 1, 0, 0, 3]);
+    // The order as written, chorus copies and all, reads as parts too.
+    expect(partsFromOrder(parts, songbook.map((_, i) => i), songbook)).toEqual([0, 1, 0, 2, 0, 3]);
+    // Not made of whole parts (a slide on its own): can't be read as parts.
+    expect(partsFromOrder(parts, [0, 3], songbook)).toBeNull();
   });
 });

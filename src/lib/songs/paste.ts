@@ -148,9 +148,13 @@ export function parsePastedLyrics(raw: string, perSlide = 2): PastedSong {
     cur.lines.push(lyric);
   }
 
+  // One unbroken block, no headings (many sites copy like that): find the
+  // parts from what comes back.
+  const unbroken = parts.length === 1 && !parts[0].label && parts[0].lines.length >= 10;
+
   // A heading with no lines under it means "sing that part again".
   const slides: SongSlide[] = [];
-  for (const p of parts) {
+  for (const p of unbroken ? splitByRepeats(parts[0].lines) : parts) {
     let body = p.lines;
     if (p.label) {
       const base = p.label.replace(/\s+\d+$/, "");
@@ -171,3 +175,73 @@ export function parsePastedLyrics(raw: string, perSlide = 2): PastedSong {
   return { title, author, slides, dropped };
 }
 
+
+const sameLine = (l: string) =>
+  l
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+
+/**
+ * Lyrics pasted as one block, the chorus written out every time it's sung:
+ * the longest run of lines (three or more) that comes back is the chorus,
+ * and the song splits around it. Between choruses are verses; a short
+ * repeat of the chorus's last lines is a tag; what follows the last chorus,
+ * if it isn't that, is the ending. Each part then splits into slides on its
+ * own, so a chorus is the same slides every time it comes.
+ */
+export function splitByRepeats(lines: string[]): { label?: string; lines: string[] }[] {
+  const k = lines.map(sameLine);
+  const n = k.length;
+  // How often a run comes back, not overlapping itself.
+  const times = (at: number, len: number) => {
+    let c = 0;
+    for (let p = 0; p + len <= n; ) {
+      if (k.slice(p, p + len).every((x, i) => x === k[at + i])) {
+        c++;
+        p += len;
+      } else p++;
+    }
+    return c;
+  };
+  let chorus = { at: -1, len: 0, times: 0 };
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      let len = 0;
+      while (j + len < n && i + len < j && k[i + len] === k[j + len]) len++;
+      if (len < 3 || len < chorus.len) continue;
+      const c = times(i, len);
+      if (len > chorus.len || c > chorus.times) chorus = { at: i, len, times: c };
+    }
+  }
+  if (chorus.len < 3) return [{ lines }];
+  const ck = k.slice(chorus.at, chorus.at + chorus.len);
+
+  const out: { label?: string; lines: string[] }[] = [];
+  let gap: string[] = [];
+  let verse = 0;
+  // The chorus's last lines sung again (two or more) at the start of a stretch: a tag.
+  const tagLength = (g: string[]) => {
+    for (let len = Math.min(g.length, ck.length - 1); len >= 2; len--) {
+      if (g.slice(0, len).every((x, i) => x === ck[ck.length - len + i])) return len;
+    }
+    return 0;
+  };
+  const flush = (atEnd: boolean) => {
+    if (!gap.length) return;
+    const tag = tagLength(gap.map(sameLine));
+    if (tag) out.push({ label: "Tag", lines: gap.slice(0, tag) });
+    const rest = gap.slice(tag);
+    if (rest.length) out.push({ label: atEnd && out.length ? "Ending" : `Verse ${++verse}`, lines: rest });
+    gap = [];
+  };
+  for (let p = 0; p < n; ) {
+    if (p + ck.length <= n && ck.every((x, i) => x === k[p + i])) {
+      flush(false);
+      out.push({ label: "Chorus", lines: lines.slice(p, p + ck.length) });
+      p += ck.length;
+    } else gap.push(lines[p++]);
+  }
+  flush(true);
+  return out;
+}

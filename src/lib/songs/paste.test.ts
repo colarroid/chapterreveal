@@ -72,3 +72,37 @@ describe("pasted lyrics", () => {
     expect(s).toEqual([{ text: "Line one\nLine two" }, { text: "Line three" }]);
   });
 });
+
+describe("lyrics pasted as one block", () => {
+  // Shaped like many copied songs: no blank lines, no headings, the chorus
+  // written out every time, a tag repeating its end, and an ending.
+  const chorus = ["Lift your voice and sing", "Sing to the King", "Praise His name", "Praise His name forever"];
+  const text = [
+    ...chorus,
+    "Morning light is breaking", "Every heart awaking", "Here we come again",
+    ...chorus,
+    "Rivers run to the sea", "Mountains bow the knee",
+    ...chorus,
+    "Praise His name", "Praise His name forever",
+    "When the day is over", "Still we sing",
+    ...chorus,
+    "Forever and ever", "Amen",
+  ].join("\n");
+
+  it("finds the chorus, verses, tag and ending from what comes back", () => {
+    const s = parsePastedLyrics(text).slides;
+    expect(s.filter((x) => x.label).map((x) => x.label)).toEqual(["Chorus", "Verse 1", "Chorus", "Verse 2", "Chorus", "Tag", "Verse 3", "Chorus", "Ending"]);
+  });
+
+  it("makes every chorus the same slides", () => {
+    const s = parsePastedLyrics(text).slides;
+    const starts = s.map((x, i) => (x.label === "Chorus" ? i : -1)).filter((i) => i >= 0);
+    const first = s.slice(starts[0], starts[0] + 2).map((x) => x.text);
+    for (const at of starts) expect(s.slice(at, at + 2).map((x) => x.text)).toEqual(first);
+  });
+
+  it("leaves a block with nothing repeated as it was", () => {
+    const plain = Array.from({ length: 12 }, (_, i) => `Line number ${i + 1}`).join("\n");
+    expect(parsePastedLyrics(plain).slides.every((x) => !x.label)).toBe(true);
+  });
+});
