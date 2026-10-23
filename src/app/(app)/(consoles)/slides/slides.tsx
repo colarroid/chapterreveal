@@ -252,6 +252,18 @@ export function Slides({
   const nextPosition = () => (slides.length ? Math.max(...slides.map((s) => s.position)) + 1 : 0);
   // The plan's limits on presentations and their slides (Free: 2, of 10 each).
   const deckFull = slides.length >= limits.deckSlides;
+  // Pictures in the open presentation, every picture on its slides (Free: 4).
+  const deckPictures = slides.reduce((n, x) => n + (x.kind === "image" ? (x.images?.length ?? 1) : 0), 0);
+  const deckRoom = limits.deckImages - deckPictures;
+  /** Room for no more pictures: the presentation's, or the plan's picture slides. */
+  const picturesFull = full || deckRoom <= 0;
+  /** Too many pictures for the presentation: why, or null. */
+  const overDeck = (n: number) =>
+    n > deckRoom
+      ? deckRoom <= 0
+        ? `This presentation has its ${limits.deckImages} pictures, the most on the ${planName(plan)} plan. Take one off, or upgrade.`
+        : `This presentation has room for ${deckRoom} more picture${deckRoom === 1 ? "" : "s"} on the ${planName(plan)} plan (${limits.deckImages} in a presentation).`
+      : null;
   const decksFull = decks.length >= limits.decks;
 
   async function saveText(title: string, body: string, existing: SavedSlide | null): Promise<string | void> {
@@ -327,7 +339,7 @@ export function Slides({
   /** A new slide from the picked pictures (side by side) or video. */
   async function upload(files: File[]) {
     setError("");
-    const problem = checkFiles(files, limits.slideImages);
+    const problem = checkFiles(files, limits.slideImages) ?? (files[0]?.type.startsWith("video/") ? null : overDeck(files.length));
     if (problem) return setError(problem);
     const video = files[0].type.startsWith("video/");
     setUploading(0);
@@ -376,7 +388,7 @@ export function Slides({
   async function addPictures(s: SavedSlide, files: File[]) {
     setError("");
     const have = s.images?.length ?? 1;
-    const problem = checkFiles(files, limits.slideImages - have);
+    const problem = checkFiles(files, limits.slideImages - have) ?? overDeck(files.length);
     if (problem) return setError(problem);
     setUploading(0);
     try {
@@ -410,6 +422,8 @@ export function Slides({
 
   // ---- Making, renaming and deleting presentations -----------------------------
   const [naming, setNaming] = useState<null | "new" | "rename">(null);
+  /** "Delete one or upgrade": shown when + New is pressed at the plan's presentations. */
+  const [deckUpsell, setDeckUpsell] = useState(false);
   async function saveDeck(name: string): Promise<string | void> {
     const clean = name.trim().slice(0, 80);
     if (!clean) return "Give the presentation a name.";
@@ -599,7 +613,7 @@ export function Slides({
                       )}
                     </div>
                   ))}
-                  {(current.images?.length ?? 1) < limits.slideImages && (
+                  {(current.images?.length ?? 1) < limits.slideImages && deckRoom > 0 && (
                     <button
                       type="button"
                       disabled={uploading !== null}
@@ -625,7 +639,7 @@ export function Slides({
                 big
                 first
                 videoAllowed={limits.videoSlides}
-                mediaFull={full}
+                mediaFull={picturesFull}
                 uploading={uploading}
                 onText={pickText}
                 onPicture={pickPicture}
@@ -657,17 +671,27 @@ export function Slides({
                 size="sm"
                 variant="secondary"
                 className="ml-auto"
-                disabled={decksFull}
-                title={decksFull ? `The ${planName(plan)} plan has up to ${limits.decks} presentations` : "Make a presentation, then add its slides"}
-                onClick={() => setNaming("new")}
+                title="Make a presentation, then add its slides"
+                // At the Free plan's presentations: say how to get another instead.
+                onClick={() => (decksFull ? setDeckUpsell(true) : setNaming("new"))}
               >
                 <Plus size={14} /> New
               </Button>
             </div>
             {naming === "new" && <DeckName onCancel={() => setNaming(null)} onSave={saveDeck} />}
-            {Number.isFinite(limits.decks) && (
+            {deckUpsell && decksFull && (
+              <Notice tone="info">
+                You have {limits.decks} presentations, the most on the {planName(plan)} plan. To make another, delete one you no longer need, or upgrade to Paid for
+                unlimited presentations.{" "}
+                {/* A new tab, so a service in progress here isn't left. */}
+                <a href="/pricing" target="_blank" rel="noopener" className="font-semibold underline">
+                  See plans
+                </a>
+              </Notice>
+            )}
+            {Number.isFinite(limits.decks) && !(deckUpsell && decksFull) && (
               <p className={`px-1 text-xs ${decksFull ? "font-semibold text-warning" : "text-faint"}`}>
-                {decks.length} of {limits.decks} presentations on the {planName(plan)} plan, up to {limits.deckSlides} slides each.
+                {decks.length} of {limits.decks} presentations on the {planName(plan)} plan, up to {limits.deckImages} pictures each.
                 {decksFull && " Delete one to make another, or upgrade."}
               </p>
             )}
@@ -734,11 +758,12 @@ export function Slides({
               <TextEditor key={editing.id} existing={editing} onCancel={() => setEditing(null)} onSave={(title, body) => saveText(title, body, editing)} />
             )}
 
-            {/* The Free plan's allowance for pictures and videos; text is unlimited. */}
-            {Number.isFinite(limit) && (
-              <p className={`px-1 text-xs ${full ? "font-semibold text-warning" : "text-faint"}`}>
-                {mediaCount} of {limit} picture slides on the {planName(plan)} plan, up to {limits.slideImages} pictures each, kept 7 days.
-                {full ? " Delete one to upload another, or upgrade to keep more." : " Text slides are unlimited."}
+            {/* The Free plan's allowance: pictures in this presentation; text is unlimited. */}
+            {Number.isFinite(limits.deckImages) && (
+              <p className={`px-1 text-xs ${picturesFull ? "font-semibold text-warning" : "text-faint"}`}>
+                {Math.min(deckPictures, limits.deckImages)} of {limits.deckImages} pictures in this presentation on the {planName(plan)} plan, up to {limits.slideImages} on a slide, kept 7
+                days.
+                {picturesFull ? " Take one off to add another, or upgrade." : " Text slides are unlimited."}
               </p>
             )}
 
@@ -802,7 +827,7 @@ export function Slides({
                   ) : adding === "choose" || uploading !== null ? (
                     <AddSlideChoice
                       videoAllowed={limits.videoSlides}
-                      mediaFull={full}
+                      mediaFull={picturesFull}
                       uploading={uploading}
                       onText={pickText}
                       onPicture={pickPicture}

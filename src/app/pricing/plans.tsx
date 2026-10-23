@@ -10,7 +10,7 @@ const FREE_FEATURES = [
   "Projects verses automatically in less than a second",
   "Detects and projects worship lyrics automatically",
   `${limitText("image", free.image)} and ${limitText("video", free.video)} as custom backgrounds`,
-  `${free.decks} slide presentations, up to ${free.deckSlides} slides each (text and pictures)`,
+  `${free.decks} slide presentations, each with up to ${free.deckImages} pictures (${free.slideImages} on a slide) and text slides`,
   "Popular translations",
   "Every Bible translation we offer",
   "Shared song library, your own songs and playlists",
