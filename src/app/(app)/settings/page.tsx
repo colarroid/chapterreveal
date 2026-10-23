@@ -35,10 +35,8 @@ export default async function SettingsPage() {
       profile={{ firstName: profile?.first_name ?? "", lastName: profile?.last_name ?? "", phone: profile?.phone ?? "" }}
       address={m.address}
       invites={(invites ?? []) as { id: string; code: string; role: string; expires_at: string }[]}
-      silenceEndMinutes={m.settings.silence_end_minutes ?? 20}
       settings={m.settings}
       translations={translations}
-      sermonSummaries={!!process.env.ANTHROPIC_API_KEY}
     />
   );
 }

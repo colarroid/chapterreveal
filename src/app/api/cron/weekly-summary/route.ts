@@ -2,9 +2,10 @@ import { createClient } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
 import { buildSummary, sendEmail } from "@/lib/summary/send";
 
-// Vercel Cron, Monday morning (vercel.json). Every church with the weekly
-// summary on gets last week's, once: summary_emails records each send, so a
-// retried run skips churches already done.
+// Vercel Cron, Monday morning (vercel.json). Every church gets last week's
+// summary at the email it signed up with, once: summary_emails records each
+// send, so a retried run skips churches already done. Nothing is sent until
+// the AI sermon summaries are set up (ANTHROPIC_API_KEY).
 export const maxDuration = 300;
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
@@ -15,6 +16,7 @@ export async function GET(req: NextRequest) {
   if (!secret || req.headers.get("authorization") !== `Bearer ${secret}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  if (!process.env.ANTHROPIC_API_KEY) return NextResponse.json({ skipped: "ANTHROPIC_API_KEY is not set: no summaries sent" });
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !serviceKey) return NextResponse.json({ error: "SUPABASE_SERVICE_ROLE_KEY is not set" }, { status: 500 });

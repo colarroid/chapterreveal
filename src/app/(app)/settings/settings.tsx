@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, ChevronRight, Copy, Link2, LoaderCircle, Mail, MonitorPlay, Palette, RefreshCw, ShieldCheck, Trash2, UserPlus, UserRound, Users } from "lucide-react";
+import { Check, ChevronRight, Copy, Link2, LoaderCircle, MonitorPlay, Palette, RefreshCw, ShieldCheck, Trash2, UserPlus, UserRound, Users } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -35,11 +35,8 @@ interface Props {
   profile: { firstName: string; lastName: string; phone: string };
   address: ChurchAddress;
   invites: { id: string; code: string; role: string; expires_at: string }[];
-  silenceEndMinutes: number;
   settings: Record<string, unknown>;
   translations: TranslationInfo[];
-  /** Whether the email includes AI sermon summaries (ANTHROPIC_API_KEY set). */
-  sermonSummaries: boolean;
 }
 
 function Section({ icon: Icon, title, description, children }: { icon: typeof Users; title: string; description?: string; children: React.ReactNode }) {
@@ -107,13 +104,11 @@ export function Settings(p: Props) {
   const { copied, copy } = useCopy();
   const [origin, setOrigin] = useState("");
   const [name, setName] = useState(p.churchName);
-  const [silence, setSilence] = useState(String(p.silenceEndMinutes));
   const [translation, setTranslation] = useState(String(p.settings.translation ?? DEFAULT_TRANSLATION));
   const [takeDown, setTakeDown] = useState(() => cleanTakeDown(p.settings));
   const [takeSeconds, setTakeSeconds] = useState(String(cleanTakeDown(p.settings).seconds));
   const [address, setAddress] = useState<ChurchAddress>(p.address.country ? p.address : { ...p.address, country: DEFAULT_COUNTRY });
   const [me, setMe] = useState(p.profile);
-  const [weekly, setWeekly] = useState(p.settings.weekly_summary === true);
   const [msg, setMsg] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
   // Which action is running, so only its button shows a spinner.
   const [busy, setBusy] = useState<string | null>(null);
@@ -283,12 +278,11 @@ export function Settings(p: Props) {
         </Section>
 
         {p.isAdmin && (
-          <Section icon={ShieldCheck} title="Church" description="Your church's name and address, how verses come off the screen, and when a forgotten service should end on its own.">
+          <Section icon={ShieldCheck} title="Church" description="Your church's name and address, its Bible, and how verses come off the screen.">
             <form
               className="space-y-4"
               onSubmit={(e) => {
                 e.preventDefault();
-                const minutes = Math.min(120, Math.max(5, Number(silence) || 20));
                 const wait = cleanTakeDown({ take_down_seconds: takeSeconds }).seconds;
                 void run(
                   () =>
@@ -299,7 +293,7 @@ export function Settings(p: Props) {
                         country_code: address.country,
                         region: address.region.trim(),
                         street_address: address.street.trim() || null,
-                        settings: { ...p.settings, silence_end_minutes: minutes, translation, take_down: takeDown.mode, take_down_seconds: wait },
+                        settings: { ...p.settings, translation, take_down: takeDown.mode, take_down_seconds: wait },
                       })
                       .eq("id", p.churchId),
                   "Saved.",
@@ -309,15 +303,6 @@ export function Settings(p: Props) {
             >
               <Field label="Church name" value={name} onChange={(e) => setName(e.target.value)} required minLength={2} maxLength={120} />
               <ChurchAddressFields value={address} onChange={setAddress} />
-              <Field
-                label="End the service after this many minutes of silence"
-                type="number"
-                min={5}
-                max={120}
-                value={silence}
-                onChange={(e) => setSilence(e.target.value)}
-                hint="Stops transcription (and its cost) if someone forgets to press End service."
-              />
               <div>
                 <span className="text-sm font-bold">Default translation</span>
                 <Dropdown
@@ -369,44 +354,6 @@ export function Settings(p: Props) {
                 Save changes
               </Button>
             </form>
-          </Section>
-        )}
-
-        {p.isAdmin && (
-          <Section
-            icon={Mail}
-            title="Weekly summary"
-            description={`Every Monday morning, church admins get an email of the past week's services: ${p.sermonSummaries ? "a short summary of each sermon, " : ""}the scriptures shown and the songs sung.`}
-          >
-            <button
-              type="button"
-              role="switch"
-              aria-checked={weekly}
-              disabled={busy !== null}
-              onClick={() => {
-                const on = !weekly;
-                setWeekly(on);
-                void run(
-                  () => supabase.from("churches").update({ settings: { ...p.settings, weekly_summary: on } }).eq("id", p.churchId),
-                  on ? "The weekly summary is on. The first one arrives next Monday." : "The weekly summary is off.",
-                  "weekly",
-                );
-              }}
-              className="flex w-full items-center gap-3 rounded-lg bg-surface-2 px-4 py-3 text-left transition hover:bg-surface-3 disabled:opacity-60"
-            >
-              <span className="min-w-0 flex-1">
-                <span className="block font-bold">Email the weekly summary</span>
-                <span className="block text-sm text-muted">To every admin of {p.churchName}. Off by default.</span>
-              </span>
-              <span className={`relative h-5 w-9 shrink-0 rounded-full transition ${weekly ? "bg-accent-fill" : "bg-surface-3 ring-1 ring-line-strong"}`}>
-                <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all ${weekly ? "left-[18px]" : "left-0.5"}`} />
-              </span>
-            </button>
-            {p.sermonSummaries && (
-              <p className="text-xs text-faint">
-                Sermon summaries are written by AI from the live transcript and leave out personal details like prayer requests and names. The full transcript stays in History.
-              </p>
-            )}
           </Section>
         )}
 

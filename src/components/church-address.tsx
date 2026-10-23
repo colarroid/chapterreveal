@@ -21,52 +21,54 @@ function Labelled({ label, children }: { label: string; children: React.ReactNod
   );
 }
 
-// Country first, then its state or region, then the street. Countries with
-// a known list get a dropdown for the state; anywhere else it is typed.
+// Country and its state or region side by side, then the street. Countries
+// with a known list get a dropdown for the state; anywhere else it is typed.
 export function ChurchAddressFields({ value, onChange }: { value: ChurchAddress; onChange: (v: ChurchAddress) => void }) {
   const regions = REGIONS[value.country];
   const label = regionLabel(value.country);
 
   return (
     <div className="space-y-4">
-      <Labelled label="Country">
-        <Dropdown
-          ariaLabel="Country"
-          searchable
-          required
-          name="country"
-          value={value.country}
-          // A new country means the old state no longer applies.
-          onChange={(country) => onChange({ ...value, country, region: "" })}
-          options={COUNTRY_OPTIONS}
-          className="h-12 text-[15px] [&>button]:px-5"
-        />
-      </Labelled>
-
-      {regions ? (
-        <Labelled label={label}>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Labelled label="Country">
           <Dropdown
-            ariaLabel={label}
+            ariaLabel="Country"
+            searchable
             required
-            name="region"
-            placeholder={`Choose a ${label.toLowerCase()}`}
-            value={value.region}
-            onChange={(region) => onChange({ ...value, region })}
-            options={regions.map((r) => ({ value: r, label: r }))}
+            name="country"
+            value={value.country}
+            // A new country means the old state no longer applies.
+            onChange={(country) => onChange({ ...value, country, region: "" })}
+            options={COUNTRY_OPTIONS}
             className="h-12 text-[15px] [&>button]:px-5"
           />
         </Labelled>
-      ) : (
-        <AuthField
-          label={label}
-          name="region"
-          autoComplete="address-level1"
-          required
-          maxLength={80}
-          value={value.region}
-          onChange={(e) => onChange({ ...value, region: e.target.value })}
-        />
-      )}
+
+        {regions ? (
+          <Labelled label={label}>
+            <Dropdown
+              ariaLabel={label}
+              required
+              name="region"
+              placeholder={`Choose a ${label.toLowerCase()}`}
+              value={value.region}
+              onChange={(region) => onChange({ ...value, region })}
+              options={regions.map((r) => ({ value: r, label: r }))}
+              className="h-12 text-[15px] [&>button]:px-5"
+            />
+          </Labelled>
+        ) : (
+          <AuthField
+            label={label}
+            name="region"
+            autoComplete="address-level1"
+            required
+            maxLength={80}
+            value={value.region}
+            onChange={(e) => onChange({ ...value, region: e.target.value })}
+          />
+        )}
+      </div>
 
       <AuthField
         label="Street address"

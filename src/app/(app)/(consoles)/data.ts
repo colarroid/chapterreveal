@@ -31,7 +31,8 @@ export const baseFor = (m: Membership): ConsoleBase => ({
   churchId: m.churchId,
   userId: m.userId,
   screenToken: m.screenToken,
-  silenceEndMinutes: m.settings.silence_end_minutes ?? 20,
+  // Set by platform admins (migration 0036); 10 minutes unless they change it.
+  silenceEndMinutes: m.settings.silence_end_minutes ?? 10,
   display: cleanDisplay(m.settings.display),
   canEditDisplay: m.role === "admin",
   takeDown: cleanTakeDown(m.settings),
