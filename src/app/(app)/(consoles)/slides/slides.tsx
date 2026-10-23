@@ -553,14 +553,14 @@ export function Slides({
               <div className={`overflow-hidden rounded-lg ${onAir === current.id ? "ring-2 ring-negative" : "ring-1 ring-line"}`}>
                 <div className="group relative aspect-video">
                   <SlideView slide={toSlide(current)} theme={current.kind === "text" ? display.scripture : undefined} muted />
-                  {/* Picture slides: full height (the default) or full width, on hover. */}
+                  {/* Picture slides: full height (the default) or full width. Always shown. */}
                   {current.kind === "image" && (
                     <button
                       type="button"
                       onClick={() => void setFit(current, current.fit === "width" ? "height" : "width")}
                       title={current.fit === "width" ? "Fit height: show each picture's full height" : "Fill width: stretch each picture across the screen"}
                       aria-label={current.fit === "width" ? "Fit height" : "Fill width"}
-                      className="absolute right-2 bottom-2 inline-flex h-8 items-center gap-1.5 rounded-full bg-black/60 px-3 text-xs font-bold text-white opacity-0 ring-1 ring-white/20 backdrop-blur-sm transition group-hover:opacity-100 hover:bg-black/80 focus-visible:opacity-100 active:scale-[0.97]"
+                      className="absolute right-2 bottom-2 z-10 inline-flex h-8 items-center gap-1.5 rounded-full bg-black/70 px-3 text-xs font-bold text-white ring-1 ring-white/25 backdrop-blur-sm transition hover:bg-black/85 active:scale-[0.97]"
                     >
                       {current.fit === "width" ? <StretchVertical size={14} /> : <StretchHorizontal size={14} />}
                       {current.fit === "width" ? "Fit height" : "Fill width"}
