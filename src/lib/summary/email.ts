@@ -102,7 +102,7 @@ export function renderSummaryEmail(opts: {
           </td></tr>
           ${services.map((s) => serviceHtml(s, timeZone)).join("")}
           <tr><td style="padding:4px 4px 0; font-family:${FONT}; font-size:12px; line-height:1.7; color:${FAINT};">
-            ${sample ? "This is a sample. Turn the weekly summary on in Settings to get it every Monday morning." : "You get this because the weekly summary is on for your church. Church admins can turn it off in Settings."}
+            ${sample ? "This is a sample, sent from Settings. The real one arrives every Monday morning at the email your church signed up with." : `You get this because ${esc(churchName)} signed up to ${APP_NAME} with this address. Reply to this email if you'd rather not receive it.`}
             ${ai ? "Summaries are written by AI from the live transcript and may contain mistakes." : ""}<br />
             <a href="${SITE_URL}/settings" style="color:${FAINT}; text-decoration:underline;">Settings</a>
             &nbsp;·&nbsp;

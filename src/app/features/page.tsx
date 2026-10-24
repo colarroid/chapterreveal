@@ -155,7 +155,7 @@ const GROUPS: Group[] = [
     features: [
       { icon: Users, title: "Media team", body: "Invite your team with single-use codes. Admins manage the church; operators run the service." },
       { icon: History, title: "Service history", body: "Every service's transcript, with each verse shown marked where it was said." },
-      { icon: Mail, title: "Weekly summary", body: "Every Monday, church admins get an email of the week's services: the scriptures shown and the songs sung." },
+      { icon: Mail, title: "Weekly summary", body: "Every Monday, your church gets an email of the week's services: a short summary of each sermon, the scriptures shown and the songs sung." },
       { icon: WifiOff, title: "Keeps going offline", body: "If the internet drops, search still works and the transcript is saved, then sent when it's back." },
       { icon: Mic, title: "Sound checks", body: "Pick the desk feed, watch the level, and get a warning if it goes silent or clips." },
       { icon: Timer, title: "Ends forgotten services", body: "If nobody presses End, the service stops itself after the silence you choose." },

@@ -37,6 +37,7 @@ export default async function SettingsPage() {
       invites={(invites ?? []) as { id: string; code: string; role: string; expires_at: string }[]}
       settings={m.settings}
       translations={translations}
+      weeklySummary={!!process.env.ANTHROPIC_API_KEY}
     />
   );
 }

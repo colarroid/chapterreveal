@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, ChevronRight, Copy, Link2, LoaderCircle, MonitorPlay, Palette, RefreshCw, ShieldCheck, Trash2, UserPlus, UserRound, Users } from "lucide-react";
+import { Check, ChevronRight, Copy, Link2, LoaderCircle, Mail, MonitorPlay, Palette, RefreshCw, ShieldCheck, Trash2, UserPlus, UserRound, Users } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -37,6 +37,11 @@ interface Props {
   invites: { id: string; code: string; role: string; expires_at: string }[];
   settings: Record<string, unknown>;
   translations: TranslationInfo[];
+  /**
+   * Whether the weekly summary is running (ANTHROPIC_API_KEY set). Until
+   * then nothing about it shows on this page.
+   */
+  weeklySummary: boolean;
 }
 
 function Section({ icon: Icon, title, description, children }: { icon: typeof Users; title: string; description?: string; children: React.ReactNode }) {
@@ -360,6 +365,18 @@ export function Settings(p: Props) {
                 Save changes
               </Button>
             </form>
+          </Section>
+        )}
+
+        {p.isAdmin && p.weeklySummary && (
+          <Section
+            icon={Mail}
+            title="Weekly summary"
+            description="Every Monday morning, the email your church signed up with gets a summary of the past week's services: a short summary of each sermon, the scriptures shown and the songs sung."
+          >
+            <p className="text-xs text-faint">
+              Sermon summaries are written by AI from the live transcript and leave out personal details like prayer requests and names. The full transcript stays in History.
+            </p>
           </Section>
         )}
 
