@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
 import { buildSummary, sendEmail } from "@/lib/summary/send";
@@ -13,7 +14,10 @@ const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 export async function GET(req: NextRequest) {
   // Vercel sends the project's CRON_SECRET; nobody else can start a run.
   const secret = process.env.CRON_SECRET;
-  if (!secret || req.headers.get("authorization") !== `Bearer ${secret}`) {
+  const given = Buffer.from(req.headers.get("authorization") ?? "");
+  const wanted = Buffer.from(`Bearer ${secret ?? ""}`);
+  // Compared in constant time, so the secret can't be guessed a byte at a time.
+  if (!secret || given.length !== wanted.length || !timingSafeEqual(given, wanted)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   if (!process.env.ANTHROPIC_API_KEY) return NextResponse.json({ skipped: "ANTHROPIC_API_KEY is not set: no summaries sent" });

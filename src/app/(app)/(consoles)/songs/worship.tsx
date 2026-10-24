@@ -739,7 +739,7 @@ export function Worship({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [active, step, goLive, clear, putUp, toggleLive, toggleLock, rejectSong]);
+  }, [active, step, clear, putUp, toggleLive, toggleLock, rejectSong]);
 
   // ---- Library and editing --------------------------------------------------
   const [query, setQuery] = useState("");

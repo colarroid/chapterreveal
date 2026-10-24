@@ -40,7 +40,7 @@ export async function POST(req: Request) {
       image_url: deliveryUrl(config.cloudName, kind, first),
       public_id: first,
       images: kind === "image" ? ids.map((id) => imageEntry(config.cloudName, id!)) : [],
-      position: typeof body.position === "number" ? Math.round(body.position) : 0,
+      position: typeof body.position === "number" && Number.isFinite(body.position) ? Math.round(body.position) : 0,
       deck_id: deckId,
       created_by: member.userId,
     })

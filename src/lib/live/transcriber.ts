@@ -128,6 +128,9 @@ export class Transcriber {
     ws.onclose = (e) => {
       if (this.ws !== ws) return;
       this.ws = null;
+      // This socket's keep-alive goes with it; the next socket starts its own.
+      if (this.keepAlive) clearInterval(this.keepAlive);
+      this.keepAlive = null;
       if (this.closing) {
         this.ev.onStatus("closed");
         return;

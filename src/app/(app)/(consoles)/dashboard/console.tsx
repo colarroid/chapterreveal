@@ -701,7 +701,7 @@ export function Console({ churchId, userId, screenToken, translationId, translat
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [active, clear, step, showRef, live.suggestions, goLive, typeDigit, putUp, armed, kept, toggleLive]);
+  }, [active, clear, step, showRef, live.suggestions, typeDigit, putUp, armed, kept, toggleLive]);
 
   // ---- Render -------------------------------------------------------------
 

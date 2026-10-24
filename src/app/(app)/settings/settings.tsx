@@ -285,17 +285,23 @@ export function Settings(p: Props) {
                 e.preventDefault();
                 const wait = cleanTakeDown({ take_down_seconds: takeSeconds }).seconds;
                 void run(
-                  () =>
-                    supabase
+                  async () => {
+                    // The newest settings are read and merged, so a look
+                    // changed from the console since this page opened isn't
+                    // overwritten with the copy this page loaded.
+                    const { data } = await supabase.from("churches").select("settings").eq("id", p.churchId).maybeSingle();
+                    const latest = (data?.settings as Record<string, unknown> | null) ?? p.settings;
+                    return supabase
                       .from("churches")
                       .update({
                         name: name.trim(),
                         country_code: address.country,
                         region: address.region.trim(),
                         street_address: address.street.trim() || null,
-                        settings: { ...p.settings, translation, take_down: takeDown.mode, take_down_seconds: wait },
+                        settings: { ...latest, translation, take_down: takeDown.mode, take_down_seconds: wait },
                       })
-                      .eq("id", p.churchId),
+                      .eq("id", p.churchId);
+                  },
                   "Saved.",
                   "church",
                 );

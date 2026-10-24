@@ -8,8 +8,9 @@ import { supabaseServer } from "@/lib/supabase/server";
 export async function GET(request: NextRequest) {
   const url = request.nextUrl;
   const rawNext = url.searchParams.get("next") ?? "/dashboard";
-  // Only ever redirect within this site.
-  const next = rawNext.startsWith("/") && !rawNext.startsWith("//") ? rawNext : "/dashboard";
+  // Only ever redirect within this site: one leading slash, then anything
+  // but another slash or a backslash (browsers read "/\evil.com" as "//evil.com").
+  const next = /^\/(?![/\\])/.test(rawNext) ? rawNext : "/dashboard";
   const supabase = await supabaseServer();
 
   const code = url.searchParams.get("code");

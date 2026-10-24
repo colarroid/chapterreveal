@@ -87,18 +87,27 @@ export class Outbox {
         if (/^[0-9A-Z]{5}$/.test(code ?? "")) e.tries = (e.tries ?? 0) + 1;
         if ((e.tries ?? 0) < MAX_TRIES) failed.push(e);
       };
+      const send = (table: Table, rows: Entry[]) =>
+        this.supabase.from(table).upsert(
+          rows.map((e) => e.row),
+          { onConflict: CONFLICT[table], ignoreDuplicates: true },
+        );
       // Inserts first, so a service's last lines land before it is marked ended.
       for (const table of Object.keys(CONFLICT) as Table[]) {
         const rows = batch.filter((e) => e.table === table);
         if (!rows.length) continue;
-        const { error } = await this.supabase
-          .from(table)
-          .upsert(
-            rows.map((e) => e.row),
-            { onConflict: CONFLICT[table], ignoreDuplicates: true },
-          );
-        if (error) {
-          console.warn(`Saving ${table} failed; will retry`, error.message);
+        const { error } = await send(table, rows);
+        if (!error) continue;
+        console.warn(`Saving ${table} failed; will retry`, error.message);
+        // The database refused the batch: one bad row (its service deleted,
+        // say) must not hold back or use up the tries of the good ones, so
+        // each goes on its own and only the refused one counts a try.
+        if (/^[0-9A-Z]{5}$/.test(error.code ?? "") && rows.length > 1) {
+          for (const e of rows) {
+            const one = await send(table, [e]);
+            if (one.error) fail(e, one.error.code);
+          }
+        } else {
           for (const e of rows) fail(e, error.code);
         }
       }
