@@ -1,7 +1,8 @@
 "use client";
 
-// Every song's words in the church's library, for the worship console (the
-// public library is searched separately, and copied from). Loading them all takes a few seconds, so they're kept:
+// Every song's words for the worship console: the whole ReedArk library,
+// since detection listens for any song, with the church's own version where
+// it has one and each song marked in its library or not. Loading them all takes a few seconds, so they're kept:
 //   - in memory, so switching tabs and coming back is instant;
 //   - in the browser (Cache Storage), so the next visit opens straight away
 //     while a fresh copy downloads in the background.
@@ -16,8 +17,37 @@ export interface FullSong {
   copyright: string;
   ccli_number: string;
   slides: SongSlide[];
-  /** Copied from the public library: the public song's id. */
-  basedOn?: string | null;
+  /** The church's own version (its edit of the library song). */
+  edited?: boolean;
+  /** In the church's library; otherwise only in ReedArk's, for detection. */
+  inLibrary?: boolean;
+}
+
+/** A tag (church_songs) with its library song: the church's version wins where it has one. */
+export interface TagRow {
+  song_id: string;
+  title: string | null;
+  author: string | null;
+  slides: SongSlide[] | null;
+  songs: { title: string; author: string; copyright: string; ccli_number: string; slides: SongSlide[] } | null;
+}
+
+export const TAG_COLUMNS = "song_id, title, author, slides, songs(title, author, copyright, ccli_number, slides)";
+
+/** A tag as the console's song: the church's version, else the library's. */
+export function fromTag(t: TagRow): FullSong | null {
+  const s = t.songs;
+  if (!s) return null;
+  return {
+    id: t.song_id,
+    title: t.title ?? s.title,
+    author: t.author ?? s.author,
+    copyright: s.copyright,
+    ccli_number: s.ccli_number,
+    slides: t.slides ?? s.slides,
+    edited: t.slides !== null || t.title !== null,
+    inLibrary: true,
+  };
 }
 
 const STORE = "scripture-songs";
@@ -65,28 +95,40 @@ export function forgetSongs() {
 }
 
 /** Downloads every song, all pages at once. */
-export async function fetchAllSongs(churchId: string): Promise<FullSong[]> {
-  const supabase = supabaseBrowser();
-  const { count, error } = await supabase.from("songs").select("id", { count: "exact", head: true }).eq("church_id", churchId);
+/** Every row of a table, all pages at once. */
+async function allPages<T>(count: () => PromiseLike<{ count: number | null; error: unknown }>, page: (from: number) => PromiseLike<{ data: unknown; error: unknown }>): Promise<T[]> {
+  const { count: n, error } = await count();
   if (error) throw error;
-  const pages = Math.max(1, Math.ceil((count ?? 0) / PAGE));
-  const results = await Promise.all(
-    Array.from({ length: pages }, (_, p) =>
-      supabase
-        .from("songs")
-        .select("id, title, author, copyright, ccli_number, slides, based_on")
-        .eq("church_id", churchId)
-        .order("title")
-        .order("id")
-        .range(p * PAGE, p * PAGE + PAGE - 1),
-    ),
-  );
-  const out: FullSong[] = [];
+  const pages = Math.max(1, Math.ceil((n ?? 0) / PAGE));
+  const results = await Promise.all(Array.from({ length: pages }, (_, i) => page(i * PAGE)));
+  const out: T[] = [];
   for (const { data, error: e } of results) {
     if (e) throw e;
-    for (const { based_on, ...r } of (data ?? []) as (Omit<FullSong, "basedOn"> & { based_on: string | null })[]) out.push({ ...r, basedOn: based_on });
+    out.push(...((data ?? []) as T[]));
+  }
+  return out;
+}
+
+export async function fetchAllSongs(churchId: string): Promise<FullSong[]> {
+  const supabase = supabaseBrowser();
+  const [tags, library] = await Promise.all([
+    allPages<TagRow>(
+      () => supabase.from("church_songs").select("song_id", { count: "exact", head: true }).eq("church_id", churchId),
+      (from) => supabase.from("church_songs").select(TAG_COLUMNS).eq("church_id", churchId).order("song_id").range(from, from + PAGE - 1),
+    ),
+    allPages<Omit<FullSong, "edited" | "inLibrary">>(
+      () => supabase.from("songs").select("id", { count: "exact", head: true }),
+      (from) => supabase.from("songs").select("id, title, author, copyright, ccli_number, slides").order("id").range(from, from + PAGE - 1),
+    ),
+  ]);
+  // The church's songs as it has them; every other song as the library has it.
+  const out = new Map<string, FullSong>();
+  for (const s of library) out.set(s.id, { ...s, inLibrary: false });
+  for (const t of tags) {
+    const song = fromTag(t);
+    if (song) out.set(song.id, song);
   }
   // Songs added between the count and the pages land on a page beyond the
   // last; they arrive on the next refresh.
-  return out;
+  return [...out.values()].sort((a, b) => a.title.localeCompare(b.title));
 }

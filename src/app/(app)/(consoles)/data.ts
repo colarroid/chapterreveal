@@ -60,26 +60,38 @@ export async function loadSongs(m: Membership): Promise<SongsData> {
   const setlistsQuery = Promise.resolve(
     supabase.from("setlists").select("id, name, song_ids").eq("church_id", m.churchId).order("updated_at", { ascending: false }).limit(30),
   );
-  // Titles only, the church's own songs (the public library is searched
-  // separately). The words load in the browser. The first page also says
-  // how many there are; the rest come at once.
+  // Titles only: the library songs the church is tagged on, its own version
+  // where it has one (the ReedArk library is searched separately). The
+  // words load in the browser. The first page also says how many there
+  // are; the rest come at once.
   const page = (p: number, count = false) =>
     Promise.resolve(
       supabase
-        .from("songs")
-        .select("id, title, author, first_line, based_on", count ? { count: "exact" } : undefined)
+        .from("church_songs")
+        .select("song_id, title, author, slides, songs(title, author, first_line)", count ? { count: "exact" } : undefined)
         .eq("church_id", m.churchId)
-        .order("title")
-        .order("id")
+        .order("song_id")
         .range(p * PAGE, p * PAGE + PAGE - 1),
     );
   const first = await page(0, true);
   const rest = await Promise.all(Array.from({ length: Math.max(0, Math.ceil((first.count ?? 0) / PAGE) - 1) }, (_, i) => page(i + 1)));
   const library: LibrarySong[] = [];
+  type Row = { song_id: string; title: string | null; author: string | null; slides: { text: string }[] | null; songs: { title: string; author: string; first_line: string } | null };
   for (const { data, error } of [first, ...rest]) {
-    if (error) return { error: `Could not load songs: ${error.message}. Has migration 0030 been run?` };
-    for (const r of data ?? []) library.push({ id: r.id, title: r.title, author: r.author, firstLine: r.first_line, basedOn: r.based_on });
+    if (error) return { error: `Could not load songs: ${error.message}. Has migration 0037 been run?` };
+    for (const r of (data ?? []) as unknown as Row[]) {
+      if (!r.songs) continue;
+      const own = r.slides?.map((x) => x.text).join("\n").split("\n").find((l) => l.trim())?.trim();
+      library.push({
+        id: r.song_id,
+        title: r.title ?? r.songs.title,
+        author: r.author ?? r.songs.author,
+        firstLine: own ?? r.songs.first_line,
+        edited: r.slides !== null || r.title !== null,
+      });
+    }
   }
+  library.sort((a, b) => a.title.localeCompare(b.title));
   const { data: setlists } = await setlistsQuery;
   return { library, setlists: (setlists ?? []) as Setlist[] };
 }

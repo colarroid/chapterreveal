@@ -32,7 +32,7 @@ import { DisplayQuick } from "@/components/display-quick";
 import { Dropdown } from "@/components/dropdown";
 import { SlideView } from "@/components/slide-view";
 import { cleanDisplay, type DisplaySettings } from "@/lib/display/theme";
-import { Button, Chip, IconButton, Kbd } from "@/components/ui";
+import { Button, Chip, IconButton, Kbd, Notice } from "@/components/ui";
 import { closeProjector, fillProjectorScreen, presentOnProjector, useProjectorOpen } from "@/lib/live/present";
 import { CONSOLE_CHANNEL, SCREEN_TAKEN, ScreenSender, TAKEN_ELSEWHERE, type ConsoleMessage } from "@/lib/live/screen";
 import type { Slide } from "@/lib/scripture/bible";
@@ -42,7 +42,7 @@ import { FollowEngine, usageLift, type Suggested } from "@/lib/songs/engine";
 import { SongIndex } from "@/lib/songs/matcher";
 import { cleanOrder, learnOrder, nextPosition, partStarts, positionOf, sameWords, writtenOrder, type Order, type OrderSource } from "@/lib/songs/order";
 import { fetchAllSongs, keepSongs, songsAreFresh, songsInMemory, storedSongs, type FullSong } from "@/lib/songs/store";
-import { firstLine, songBody, type SongSlide } from "@/lib/songs/songs";
+import { firstLine, songBody } from "@/lib/songs/songs";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { EndServiceButton, LevelMeter } from "../dashboard/console";
 import { useLiveService } from "../dashboard/use-live-service";
@@ -58,8 +58,8 @@ export interface LibrarySong {
   title: string;
   author: string;
   firstLine: string;
-  /** Copied from the public library: the public song's id. */
-  basedOn?: string | null;
+  /** The church's own version (its edit of the library song). */
+  edited?: boolean;
 }
 
 const SETLIST_KEY = "scripture.setlist";
@@ -498,10 +498,18 @@ export function Worship({
     }
     engine.current.shown(id, before);
     syncLock.current?.();
+    // A song detection found in ReedArk's library joins this church's when it goes up.
+    if (liveRef.current && !song.inLibrary) {
+      setSongs((list) => list?.map((x) => (x.id === id ? { ...x, inLibrary: true } : x)) ?? list);
+      void supabaseBrowser()
+        .from("church_songs")
+        .insert({ church_id: churchId, song_id: id, added_by: userId })
+        .then(() => router.refresh());
+    }
     const next = { id, slide: i, pos: at >= 0 ? at : undefined };
     currentRef.current = next;
     setCurrent(next);
-  }, [songById, markCleared, finishSong]);
+  }, [songById, markCleared, finishSong, churchId, userId, router]);
 
   const goLive = useCallback((on: boolean) => {
     liveRef.current = on;
@@ -736,10 +744,17 @@ export function Worship({
   // ---- Library and editing --------------------------------------------------
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState<FullSong | "new" | null>(null);
-  // The song list: the church's own, or the public library to copy from.
+  // The song list: the church's own, or the ReedArk library to add from.
   const [browse, setBrowse] = useState<"mine" | "public">("mine");
-  // Public songs this church has copied already.
-  const copied = useMemo(() => new Set([...library, ...(songs ?? [])].map((x) => x.basedOn).filter((x): x is string => !!x)), [library, songs]);
+  // Library songs already in this church's library.
+  const copied = useMemo(() => new Set([...library.map((x) => x.id), ...(songs ?? []).filter((x) => x.inLibrary).map((x) => x.id)]), [library, songs]);
+  // A word after saving (a version kept for this church, sent for review).
+  const [saved, setSaved] = useState("");
+  useEffect(() => {
+    if (!saved) return;
+    const t = setTimeout(() => setSaved(""), 8000);
+    return () => clearTimeout(t);
+  }, [saved]);
   /** Songs added while another was being presented, waiting their turn. */
   const [queue, setQueue] = useState<string[]>([]);
   const folded = useMemo(() => {
@@ -771,46 +786,73 @@ export function Worship({
     else open(id);
   }
 
+  /**
+   * Saves a song (migration 0037). New: it joins the ReedArk library, or
+   * the church is tagged on the same words if they're there. An edit: the
+   * library song itself when only this church has it, else this church's
+   * own version, also sent to ReedArk as a suggested correction.
+   */
   async function save(fields: SongFields, existing: FullSong | null): Promise<string | void> {
-    const row = { ...fields, body: songBody(fields.slides), first_line: firstLine(fields.slides), updated_at: new Date().toISOString() };
+    const args = {
+      p_title: fields.title,
+      p_author: fields.author,
+      p_copyright: fields.copyright,
+      p_ccli: fields.ccli_number,
+      p_slides: fields.slides,
+      p_body: songBody(fields.slides),
+      p_first_line: firstLine(fields.slides),
+    };
     const supabase = supabaseBrowser();
-    const { data, error } = existing
-      ? await supabase.from("songs").update(row).eq("id", existing.id).select("id").single()
-      : await supabase.from("songs").insert({ ...row, church_id: churchId, created_by: userId, source: "manual" }).select("id").single();
-    if (error || !data) return error?.code === "23505" ? "Your library already has a song with these words." : (error?.message ?? "Could not save the song.");
+    if (existing) {
+      const { data, error } = await supabase.rpc("save_song", { p_song: existing.id, ...args });
+      if (error) return error.message;
+      setEditing(null);
+      keep({ id: existing.id, ...fields, edited: data === "version" });
+      if (data === "version") setSaved("Saved for your church. The change is also sent to ReedArk to consider for everyone.");
+      return;
+    }
+    const { data, error } = await supabase.rpc("add_song", args);
+    if (error || !data) return error?.message ?? "Could not save the song.";
     setEditing(null);
-    const id = data.id as string;
-    keep({ id, ...fields, basedOn: existing?.basedOn ?? null });
-    // An edit: whatever was open stays open, now with the new words.
-    if (!existing) arrive(id);
+    const id = data as string;
+    // The same words were in the library already: it's that song, as the library has it.
+    const known = await supabase.from("songs").select("title, author, copyright, ccli_number, slides").eq("id", id).maybeSingle();
+    keep(known.data ? { id, ...(known.data as Omit<FullSong, "id">) } : { id, ...fields });
+    arrive(id);
   }
 
-  /**
-   * Copy to My Library: the public song becomes the church's own, linked to
-   * it for good (based_on), so it can be edited here and how it's sung here
-   * feeds the public song's shared profile (migration 0031).
-   */
+  /** Add to my library: a tag on the library song, no copy of its words. */
   const copyFromPublic = useCallback(
-    async (publicId: string): Promise<string | void> => {
+    async (songId: string): Promise<string | void> => {
       const supabase = supabaseBrowser();
-      const { data: src } = await supabase.from("songs").select("title, author, copyright, ccli_number, slides, body, first_line").eq("id", publicId).is("church_id", null).maybeSingle();
-      if (!src) return "This song is no longer in the public library.";
-      const { data, error } = await supabase
-        .from("songs")
-        .insert({ ...src, church_id: churchId, created_by: userId, source: "manual", based_on: publicId })
-        .select("id")
-        .single();
-      if (error || !data) return error?.code === "23505" ? "It's already in your library." : (error?.message ?? "Could not copy the song.");
-      const id = data.id as string;
-      keep({ id, title: src.title, author: src.author, copyright: src.copyright, ccli_number: src.ccli_number, slides: src.slides as SongSlide[], basedOn: publicId });
-      arrive(id);
+      const { data: src } = await supabase.from("songs").select("title, author, copyright, ccli_number, slides").eq("id", songId).maybeSingle();
+      if (!src) return "This song is no longer in the library.";
+      const { error } = await supabase.from("church_songs").insert({ church_id: churchId, song_id: songId, added_by: userId });
+      if (error && error.code !== "23505") return error.message;
+      keep({ id: songId, ...(src as Omit<FullSong, "id">) });
+      arrive(songId);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps -- keep/arrive read refs and setters only
     [churchId, userId],
   );
 
+  /** Back to the library's version of a song this church has edited. */
+  async function resetSong(song: FullSong) {
+    const ok = await confirmDialog({
+      title: `Use the library's "${song.title}"?`,
+      body: "Your church's changes to it are removed, and so is the suggestion sent with them.",
+      confirmLabel: "Use the library's",
+    });
+    if (!ok) return;
+    const supabase = supabaseBrowser();
+    const { error } = await supabase.rpc("reset_song", { p_song: song.id });
+    if (error) return;
+    const { data } = await supabase.from("songs").select("title, author, copyright, ccli_number, slides").eq("id", song.id).maybeSingle();
+    if (data) keep({ id: song.id, ...(data as Omit<FullSong, "id">) });
+  }
+
   // For the rows of the song list: kept stable, reading the latest state.
-  const rowActions = useRef<{ edit: (id: string) => void; remove: (id: string) => void }>({ edit: () => {}, remove: () => {} });
+  const rowActions = useRef<{ edit: (id: string) => void; remove: (id: string) => void; reset: (id: string) => void }>({ edit: () => {}, remove: () => {}, reset: () => {} });
   useEffect(() => {
     rowActions.current = {
       edit: (id) => {
@@ -821,10 +863,15 @@ export function Worship({
         const song = songs?.[byId.get(id) ?? -1];
         if (song) void remove(song);
       },
+      reset: (id) => {
+        const song = songs?.[byId.get(id) ?? -1];
+        if (song) void resetSong(song);
+      },
     };
   });
   const editRow = useCallback((id: string) => rowActions.current.edit(id), []);
   const removeRow = useCallback((id: string) => rowActions.current.remove(id), []);
+  const resetRow = useCallback((id: string) => rowActions.current.reset(id), []);
 
   /** Opens a song from Up next. */
   function openQueued(id: string) {
@@ -835,15 +882,16 @@ export function Worship({
 
   async function remove(song: FullSong) {
     const ok = await confirmDialog({
-      title: `Delete "${song.title}"?`,
-      body: song.basedOn
-        ? "It's removed from your church's library. The public library keeps it, and you can copy it again."
-        : "It's removed from your church's library. This can't be undone.",
-      confirmLabel: "Delete",
+      title: `Take "${song.title}" out of your library?`,
+      body: song.edited
+        ? "Your church's changes to it go too. The song stays in the ReedArk library, and you can add it again."
+        : "It stays in the ReedArk library, and you can add it again.",
+      confirmLabel: "Take it out",
       danger: true,
     });
     if (!ok) return;
-    await supabaseBrowser().from("songs").delete().eq("id", song.id);
+    if (song.edited) await supabaseBrowser().rpc("reset_song", { p_song: song.id });
+    await supabaseBrowser().from("church_songs").delete().eq("church_id", churchId).eq("song_id", song.id);
     if (currentRef.current?.id === song.id) {
       currentRef.current = null;
       setCurrent(null);
@@ -1187,7 +1235,7 @@ export function Worship({
               {(
                 [
                   ["mine", "My library"],
-                  ["public", "Public library"],
+                  ["public", "All songs"],
                 ] as const
               ).map(([v, label]) => (
                 <button
@@ -1207,6 +1255,7 @@ export function Worship({
               <Plus size={13} /> Add song
             </Button>
           </div>
+          {saved && <Notice tone="ok">{saved}</Notice>}
           {browse === "public" ? (
             <PublicLibrary copied={copied} onCopy={copyFromPublic} />
           ) : (
@@ -1247,6 +1296,7 @@ export function Worship({
                 onAdd={activeSetlist ? addToSetlist : undefined}
                 onEdit={songs ? editRow : undefined}
                 onRemove={songs ? removeRow : undefined}
+                onReset={songs ? resetRow : undefined}
                 onOpen={() => {
                   setEditing(null);
                   open(s.id);
@@ -1257,13 +1307,13 @@ export function Worship({
             {library.length > 0 && matches.length === 0 && <li className="px-3 py-8 text-center text-sm text-muted">No songs match.</li>}
             {library.length === 0 && (
               <li className="px-4 py-10 text-center">
-                <p className="text-sm text-muted">No songs yet. Paste the lyrics from anywhere, or copy songs from the public library.</p>
+                <p className="text-sm text-muted">No songs yet. Paste the lyrics from anywhere, or add songs from All songs.</p>
                 <div className="mt-4 flex justify-center gap-2">
                   <Button size="sm" variant="secondary" onClick={() => setEditing("new")}>
                     <Plus size={13} /> Add song
                   </Button>
                   <Button size="sm" variant="ghost" onClick={() => setBrowse("public")}>
-                    Public library
+                    Browse all songs
                   </Button>
                 </div>
               </li>
@@ -1285,6 +1335,7 @@ const LibraryRow = memo(function LibraryRow({
   onOpen,
   onEdit,
   onRemove,
+  onReset,
 }: {
   song: LibrarySong;
   active: boolean;
@@ -1295,12 +1346,15 @@ const LibraryRow = memo(function LibraryRow({
   /** Present once the songs' words have loaded. */
   onEdit?: (id: string) => void;
   onRemove?: (id: string) => void;
+  /** Back to the library's version (songs the church has edited). */
+  onReset?: (id: string) => void;
 }) {
   return (
     <li className={`group flex items-center rounded-md transition ${active ? "bg-surface-3" : "hover:bg-surface-2"}`}>
       <button type="button" onClick={onOpen} className="block min-w-0 flex-1 px-3 py-2 text-left">
         <span className="flex items-center gap-2">
           <span className="min-w-0 flex-1 truncate text-[15px] font-semibold">{song.title}</span>
+          {song.edited && <span className="shrink-0 text-[10px] font-bold tracking-wider text-faint uppercase">Edited</span>}
         </span>
         <span className="block truncate text-xs text-muted">{song.firstLine || song.author || " "}</span>
       </button>
@@ -1310,8 +1364,13 @@ const LibraryRow = memo(function LibraryRow({
           <IconButton label="Edit song" onClick={() => onEdit(song.id)} className="h-8 w-8 hover:bg-ink/10!">
             <Pencil size={14} />
           </IconButton>
+          {onReset && song.edited && (
+            <IconButton label="Back to the library's version" onClick={() => onReset(song.id)} className="h-8 w-8 hover:bg-ink/10!">
+              <Undo2 size={14} />
+            </IconButton>
+          )}
           {onRemove && (
-            <IconButton label="Delete song" onClick={() => onRemove(song.id)} className="h-8 w-8 hover:bg-ink/10! hover:text-negative">
+            <IconButton label="Take out of your library" onClick={() => onRemove(song.id)} className="h-8 w-8 hover:bg-ink/10! hover:text-negative">
               <Trash2 size={14} />
             </IconButton>
           )}

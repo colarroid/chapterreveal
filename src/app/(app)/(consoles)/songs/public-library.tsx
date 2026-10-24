@@ -5,9 +5,9 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui";
 import { supabaseBrowser } from "@/lib/supabase/client";
 
-// The public library (songs with no church, managed on the admin site):
-// searched here, by title or any line, and copied into the church's own
-// library. Read-only otherwise. A song already copied says so instead.
+// Every song in ReedArk (one copy of each, migration 0037): searched here,
+// by title or any line, and added to the church's library with a tag, not
+// a copy of the words. A song already in its library says so instead.
 
 interface PublicSong {
   id: string;
@@ -67,14 +67,14 @@ export function PublicLibrary({ copied, onCopy }: { copied: Set<string>; onCopy:
   return (
     <>
       <label className="relative block">
-        <span className="sr-only">Search the public library</span>
+        <span className="sr-only">Search all songs</span>
         <Search size={16} className="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 text-faint" />
         <input
           type="search"
           autoFocus
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search the public library: titles and lyrics"
+          placeholder="Search all songs: titles and lyrics"
           className="inset-field h-10 w-full rounded-full bg-surface-2 pr-4 pl-10 text-sm placeholder:text-faint"
         />
       </label>
@@ -93,8 +93,8 @@ export function PublicLibrary({ copied, onCopy }: { copied: Set<string>; onCopy:
                   <Check size={13} /> In your library
                 </span>
               ) : (
-                <Button size="sm" variant="secondary" className="shrink-0" onClick={() => void copy(s.id)} disabled={busy !== null} title="Copy to My Library">
-                  {busy === s.id ? <LoaderCircle size={13} className="animate-spin" /> : <Plus size={13} />} Copy
+                <Button size="sm" variant="secondary" className="shrink-0" onClick={() => void copy(s.id)} disabled={busy !== null} title="Add to your library">
+                  {busy === s.id ? <LoaderCircle size={13} className="animate-spin" /> : <Plus size={13} />} Add
                 </Button>
               )}
             </li>
@@ -103,8 +103,8 @@ export function PublicLibrary({ copied, onCopy }: { copied: Set<string>; onCopy:
         {results && results.length === 0 && <li className="px-3 py-8 text-center text-sm text-muted">No public songs match.</li>}
         {!results && (
           <li className="px-4 py-10 text-center text-sm text-muted">
-            {total === null ? " " : `${total.toLocaleString()} ${total === 1 ? "song" : "songs"} in the public library.`}
-            <span className="mt-1 block text-xs">Search by title or any line, then copy a song to your library to use it.</span>
+            {total === null ? " " : `${total.toLocaleString()} ${total === 1 ? "song" : "songs"} in ReedArk.`}
+            <span className="mt-1 block text-xs">Search by title or any line, then add a song to your library to use it.</span>
           </li>
         )}
       </ol>
