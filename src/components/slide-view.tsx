@@ -139,14 +139,18 @@ export const SlideView = memo(function SlideView({
     textTransform: (lower && !styled ? lt.uppercase : t.uppercase) ? "uppercase" : undefined,
     textShadow: chroma ? chromaEdge : t.shadow && (!lower || styled) ? "0 0.06em 0.3em rgba(0,0,0,0.7)" : undefined,
   };
-  // Lower third: the largest size (--fit, 0.2 to 1) at which the words fit
-  // the box, found by measuring before the screen paints (a few quick
-  // layouts, no re-render), so a wrong size never shows.
+  // The largest size (--fit, 0.2 to 1) at which the words fit their box,
+  // found by measuring before the screen paints (a few quick layouts, no
+  // re-render), so a wrong size never shows. The lower third's box is the
+  // one the church sizes; the full screen's is the screen less its margins,
+  // so a long slide at a large Size setting, or a 4:3 projector, never runs
+  // off the bottom.
+  const full = layout === "full";
   const box = useRef<HTMLDivElement>(null);
-  const fitKey = lower && slide ? `${slide.label}|${slide.lines.map((l) => l.text).join("|")}|${JSON.stringify(lt)}|${t.font}` : "";
+  const fitKey = (lower || full) && slide ? `${slide.label}|${slide.lines.map((l) => l.text).join("|")}|${JSON.stringify(lt)}|${t.font}|${t.scale}|${t.uppercase}` : "";
   useLayoutEffect(() => {
     const el = box.current;
-    if (!lower || !el) return;
+    if (!(lower || full) || !el) return;
     const fitText = () => {
       const fits = () => el.scrollHeight <= el.clientHeight + 1 && el.scrollWidth <= el.clientWidth + 1;
       el.style.setProperty("--fit", "1");
@@ -186,17 +190,15 @@ export const SlideView = memo(function SlideView({
       fonts?.removeEventListener("loadingdone", fitText);
       if (frame) cancelAnimationFrame(frame);
     };
-  }, [lower, fitKey]);
+  }, [lower, full, fitKey]);
   const scale = lower && !styled ? lt.scale : t.scale;
-  // Lower-third sizes follow --fit; the projector's are plain. A frame can be
-  // any shape (long and thin, or square), so its words start from whichever
-  // of its height or width is tighter.
+  // Every size follows --fit. A frame can be any shape (long and thin, or
+  // square), so its words start from whichever of its height or width is
+  // tighter.
   const sized = (cqw: number) =>
     frame
       ? `calc(min(40cqh, 9cqw) * ${(cqw / LOWER_MAX).toFixed(3)} * var(--fit, 1))`
-      : lower
-        ? `calc(${cqw.toFixed(3)}cqw * var(--fit, 1))`
-        : `${cqw}cqw`;
+      : `calc(${cqw.toFixed(3)}cqw * var(--fit, 1))`;
   const small = (n: number) => sized(lower ? n * 0.75 : n);
 
   const body =
@@ -336,11 +338,12 @@ export const SlideView = memo(function SlideView({
   return (
     // Blank (Live off, or nothing up) is plain black, background and all.
     // Words cleared: the background stays and only the words fade.
-    <div className="relative h-full w-full overflow-hidden bg-black [container-type:inline-size]" style={chroma ? { background: chroma } : undefined}>
+    <div data-slide-root className="relative h-full w-full overflow-hidden bg-black [container-type:inline-size]" style={chroma ? { background: chroma } : undefined}>
       <div className={`absolute inset-0 transition-opacity duration-200 ${on ? "opacity-100" : "opacity-0"}`}>
         {!chroma && <Backdrop background={t.background} dim={t.dim} />}
         <div className={`absolute inset-0 flex flex-col px-[7cqw] py-[5cqw] ${justify} transition-opacity duration-300 ${text ? "opacity-100" : "opacity-0"} ${t.align === "left" ? "items-start text-left" : "items-center text-center"}`}>
-          <div className="max-w-[86cqw]" style={{ color: textColor }}>
+          {/* The words' box: as wide as the margins allow, never taller than the screen (see the fit above). */}
+          <div ref={box} className="max-h-full max-w-[86cqw] overflow-hidden" style={{ color: textColor }}>
             {body}
           </div>
         </div>

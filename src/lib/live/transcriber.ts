@@ -1,8 +1,10 @@
 "use client";
 
 // A live transcription socket that survives network blips. On an unexpected
-// close it asks the backend for a new token and reconnects, so a dropped
-// connection costs a few seconds of transcript, not the service.
+// close it asks the backend for a new token and reconnects. Audio captured
+// while the socket is down waits here and goes up as soon as it's back (the
+// transcriber takes audio faster than real time), so a dropped connection
+// delays a few seconds of transcript rather than losing them.
 
 export type TranscriberStatus = "connecting" | "live" | "reconnecting" | "closed";
 
@@ -42,6 +44,9 @@ async function fetchSession(request: SessionRequest): Promise<SessionInfo> {
   return body as SessionInfo;
 }
 
+/** How much audio to hold while the socket is down: 16-bit mono at 16 kHz, 30 seconds. */
+export const BACKLOG_MAX_BYTES = 30 * 16000 * 2;
+
 interface DeepgramResult {
   type: string;
   is_final?: boolean;
@@ -62,6 +67,9 @@ export class Transcriber {
   bytesSent = 0;
   /** Bytes sent on the current connection; Deepgram's timestamps restart with each one. */
   private connBytes = 0;
+  /** Audio captured while no socket was open, oldest first. */
+  private backlog: ArrayBuffer[] = [];
+  private backlogBytes = 0;
   sampleRate = 16000;
 
   constructor(
@@ -97,6 +105,10 @@ export class Transcriber {
     ws.onopen = () => {
       this.attempt = 0;
       this.connBytes = 0;
+      // What was said while the socket was down goes first, in order.
+      for (const pcm of this.backlog) this.push(ws, pcm);
+      this.backlog = [];
+      this.backlogBytes = 0;
       // Deepgram closes a socket that hears nothing for about 10 s. When no
       // audio is flowing (waiting for a click, a dropped desk feed), keep it
       // open so speech is picked up the moment audio returns.
@@ -153,11 +165,29 @@ export class Transcriber {
 
   send(pcm: ArrayBuffer) {
     if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(pcm);
-      this.lastSend = Date.now();
-      this.bytesSent += pcm.byteLength;
-      this.connBytes += pcm.byteLength;
+      this.push(this.ws, pcm);
+      return;
     }
+    if (this.closing) return;
+    // No socket yet, or reconnecting: hold it. Past the limit the oldest
+    // audio goes, so a long outage can't fill memory or flood the socket.
+    this.backlog.push(pcm);
+    this.backlogBytes += pcm.byteLength;
+    while (this.backlogBytes > BACKLOG_MAX_BYTES && this.backlog.length) {
+      this.backlogBytes -= this.backlog.shift()!.byteLength;
+    }
+  }
+
+  /** How much audio is waiting for the socket, in seconds. */
+  get backlogSeconds(): number {
+    return this.backlogBytes / 2 / this.sampleRate;
+  }
+
+  private push(ws: WebSocket, pcm: ArrayBuffer) {
+    ws.send(pcm);
+    this.lastSend = Date.now();
+    this.bytesSent += pcm.byteLength;
+    this.connBytes += pcm.byteLength;
   }
 
   /** Seconds of audio sent so far (16-bit mono). */
@@ -167,6 +197,8 @@ export class Transcriber {
 
   stop() {
     this.closing = true;
+    this.backlog = [];
+    this.backlogBytes = 0;
     if (this.retryTimer) clearTimeout(this.retryTimer);
     if (this.keepAlive) clearInterval(this.keepAlive);
     const ws = this.ws;

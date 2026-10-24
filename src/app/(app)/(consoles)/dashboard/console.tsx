@@ -17,6 +17,7 @@ import {
   Search,
   Square,
   TriangleAlert,
+  Undo2,
   WifiOff,
   Timer,
   X,
@@ -32,7 +33,7 @@ import { Dropdown } from "@/components/dropdown";
 import { SlideView } from "@/components/slide-view";
 import { cleanDisplay, type DisplaySettings } from "@/lib/display/theme";
 import { Button, Chip, IconButton, Kbd, PixelLoader, SignalBars } from "@/components/ui";
-import { AUTO_REPEAT_MS, eligible, holdMs, readiness } from "@/lib/live/auto-show";
+import { AutoShow } from "@/lib/live/auto-show";
 import { outbox } from "@/lib/live/outbox";
 import { isReading, versePhrases, type TakeDown } from "@/lib/live/take-down";
 import { lastSpokenTranslation, matchSpokenTranslation } from "@/lib/scripture/spoken-translations";
@@ -306,10 +307,15 @@ export function Console({ churchId, userId, screenToken, translationId, translat
     [live.serviceId, bible, churchId],
   );
 
+  // The selection before this one, for going back to it (Backspace): a
+  // preacher returns to the text all through the sermon.
+  const previousRef = useRef<Selection | null>(null);
   const putUp = useCallback(
     (sel: Selection, source: ShowSource, s?: Suggestion) => {
       const slide = sel.slides[sel.index];
       if (!slide) return;
+      const was = selectionRef.current;
+      if (was && refKey(was.ref) !== refKey(sel.ref)) previousRef.current = was;
       if (liveRef.current) {
         // The screen first: the broadcast leaves before React re-renders here.
         void screen.current?.show(slide);
@@ -516,8 +522,8 @@ export function Console({ churchId, userId, screenToken, translationId, translat
    */
   const [speechToScreen, setSpeechToScreen] = useState<number | null>(null);
   const autoRef = useRef(auto);
-  const recentAuto = useRef(new Map<string, number>());
-  const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The decision (src/lib/live/auto-show.ts, AutoShow), one per Bible loaded.
+  const autoShow = useRef<AutoShow | null>(null);
 
   useEffect(() => {
     try {
@@ -527,52 +533,34 @@ export function Console({ churchId, userId, screenToken, translationId, translat
   }, []);
   useEffect(() => {
     autoRef.current = auto;
+    // Switched off: a reference waiting on its next word is forgotten.
+    if (!auto) autoShow.current?.cancel();
     try {
       localStorage.setItem(AUTO_KEY, auto ? "1" : "0");
     } catch {}
   }, [auto]);
 
-  const fireAuto = useCallback((d: Detection, lagMs: number, heardAt: number) => {
-    const key = refKey(d.ref);
-    const cur = shownRef.current;
-    if (cur?.key === key) return;
-    // "John 3:16" then "to 18": widen what is already up.
-    const widens =
-      !!cur &&
-      cur.ref.book === d.ref.book &&
-      cur.ref.chapter === d.ref.chapter &&
-      cur.ref.verseStart === d.ref.verseStart &&
-      (d.ref.verseEnd ?? 0) > (cur.ref.verseEnd ?? cur.ref.verseStart ?? 0);
-    // Don't bring back something the operator just cleared or stepped past.
-    const last = recentAuto.current.get(key);
-    if (!widens && last && Date.now() - last < AUTO_REPEAT_MS) return;
-    recentAuto.current.set(key, Date.now());
-    showRefLatest.current(d.ref, "detected", { key, ref: d.ref, confidence: d.confidence, kind: d.kind, at: Date.now(), start: d.start, end: d.end });
-    // Transcription lag, plus our own time (including any hold) up to the send.
-    if (liveRef.current) setSpeechToScreen(Math.round(lagMs + (performance.now() - heardAt)));
-    setAutoKey(key);
-  }, []);
-
   useEffect(() => {
+    if (!bible) return;
+    const a = new AutoShow(shapeOf(bible), {
+      current: () => shownRef.current,
+      show: (d, lagMs, heardAt) => {
+        const key = refKey(d.ref);
+        showRefLatest.current(d.ref, "detected", { key, ref: d.ref, confidence: d.confidence, kind: d.kind, at: Date.now(), start: d.start, end: d.end });
+        // Transcription lag, plus our own time (including any hold) up to the send.
+        if (liveRef.current) setSpeechToScreen(Math.round(lagMs + (performance.now() - heardAt)));
+        setAutoKey(key);
+      },
+    });
+    autoShow.current = a;
     heardRef.current = (dets, text, final, lagMs) => {
-      const heardAt = performance.now();
-      if (!autoRef.current || !bible) return;
-      // Newer words replace any reference we were waiting on.
-      if (holdTimer.current) {
-        clearTimeout(holdTimer.current);
-        holdTimer.current = null;
-      }
-      const candidates = dets.filter(eligible);
-      const d = candidates[candidates.length - 1];
-      if (!d) return;
-      const r = readiness(text, d, shapeOf(bible), final);
-      if (r === "now") fireAuto(d, lagMs, heardAt);
-      else if (r === "hold") holdTimer.current = setTimeout(() => fireAuto(d, lagMs, heardAt), holdMs(text, d));
+      if (autoRef.current) a.heard(dets, text, final, lagMs, performance.now());
     };
     return () => {
-      if (holdTimer.current) clearTimeout(holdTimer.current);
+      a.cancel();
+      if (autoShow.current === a) autoShow.current = null;
     };
-  }, [bible, fireAuto]);
+  }, [bible]);
 
   // ---- Translations named aloud ---------------------------------------------
   // "Mark 13:4 in the KJV": with Auto on, the console switches to it (just for
@@ -684,6 +672,10 @@ export function Console({ churchId, userId, screenToken, translationId, translat
         putUp(selectionRef.current, "step");
       } else if (/^[0-9]$/.test(e.key)) {
         typeDigit(e.key);
+      } else if (e.key === "Backspace" && previousRef.current) {
+        // Back to the verse before this one (and Backspace again returns).
+        e.preventDefault();
+        putUp(previousRef.current, "step");
       } else if (e.key === "ArrowRight" || e.key === "ArrowDown") {
         e.preventDefault();
         step(1);
@@ -867,6 +859,13 @@ export function Console({ churchId, userId, screenToken, translationId, translat
                       <ChevronRight size={18} />
                     </IconButton>
                   </div>
+                  {previousRef.current && (
+                    <Tooltip label={`Back to ${previousRef.current.slides[previousRef.current.index]?.label ?? "the last verse"} (Backspace)`}>
+                      <IconButton label="Back to the previous verse (Backspace)" onClick={() => putUp(previousRef.current!, "step")} className="h-10 w-10 text-muted hover:bg-surface-2 hover:text-ink">
+                        <Undo2 size={16} />
+                      </IconButton>
+                    </Tooltip>
+                  )}
                   {autoKey !== null && autoKey === onAirKey && (
                     <Chip>
                       <Zap size={12} className="fill-current" /> Auto

@@ -127,6 +127,11 @@ function matchBook(tokens: Token[], i: number, mode: Mode, bible: BibleShape): {
   if (ordinal) {
     const m = aliasAt(tokens, i + 1, mode, bible, ordinal);
     if (m) return m;
+    // "the first book of Samuel".
+    if (tokens[i + 1]?.text === "book" && tokens[i + 2]?.text === "of") {
+      const n = aliasAt(tokens, i + 3, mode, bible, ordinal);
+      if (n) return n;
+    }
   }
   return aliasAt(tokens, i, mode, bible);
 }
@@ -204,8 +209,10 @@ function parseNumbers(
   const v = num(tokens[j]);
   const bridgeOk =
     res.colon || res.verseKw ||
-    // "Proverbs 3, 5 and 6": a bare comma means chapter then verse.
-    (sawBridge && j === k + 1 && (tokens[k].text === "," || tokens[k].text === "."));
+    // "Proverbs 3, 5 and 6": a bare comma means chapter then verse. After
+    // the word "chapter" it doesn't: "Matthew chapter 5, 6 and 7" lists
+    // chapters (the Sermon on the Mount), so only the chapter is read.
+    (sawBridge && !res.chapterKw && j === k + 1 && (tokens[k].text === "," || tokens[k].text === "."));
   if (v !== undefined && !refStartsAt(tokens, j, mode, bible)) {
     if (j === k) {
       res.adjacent = true;
@@ -296,7 +303,7 @@ function validate(res: NumberParse, book: number, bible: BibleShape): NumberPars
   if (kept.length === 0 && res.adjacent && res.verses.length === 1) {
     const joined = Number(`${res.chapter}${res.verses[0][0]}`);
     if (joined <= bible.chapters(book)) {
-      return { ...res, chapter: joined, verses: [], adjacent: false, clamped: false };
+      return { ...res, chapter: joined, verses: [], adjacent: false, clamped: false, pastEnd: undefined };
     }
   }
   return { ...res, verses: kept };
@@ -342,6 +349,17 @@ function toDetections(
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
+/** "of chapter 3" / "in chapter 3" starting at token k: the chapter, and the index after it. */
+function ofChapter(tokens: Token[], k: number): { chapter: number; end: number } | null {
+  const w = tokens[k]?.text;
+  if ((w !== "of" && w !== "in") || !CHAPTER_KW.has(tokens[k + 1]?.text ?? "")) return null;
+  const chapter = num(tokens[k + 2]);
+  return chapter === undefined ? null : { chapter, end: k + 3 };
+}
+
+/** How many tokens after a bare book name ("in the book of Romans we read in chapter 12") its chapter may still follow. */
+const MENTION_REACH = 8;
+
 // The chapter (and verse) said after a book name, read without checking
 // them against the Bible: "chapter four verse seven" -> 4, 7.
 function saidNumbers(tokens: Token[], k: number): { chapter: number; verse?: number; end: number } | null {
@@ -374,6 +392,8 @@ export function detect(
   let book = ctx.book;
   let chapter = ctx.chapter;
   let bare: { book: number; end: number } | null = null;
+  // A book the last text ended on, still waiting for its chapter.
+  let pending = ctx.pendingBook;
 
   for (let i = 0; i < tokens.length; ) {
     // 1. Book name followed by numbers.
@@ -393,6 +413,7 @@ export function detect(
         book = m.book;
         chapter = p.chapter;
         bare = null;
+        pending = undefined;
         i = p.end;
         continue;
       }
@@ -422,12 +443,13 @@ export function detect(
     }
 
     // 2. The previous text ended on a book name: "...turn to Romans" then "8:28".
-    if (ctx.pendingBook !== undefined && i < 3 && out.length === 0 && mode === "speech") {
-      const p = parseNumbers(tokens, i, ctx.pendingBook, mode, bible);
+    if (pending !== undefined && i < 3 && out.length === 0 && mode === "speech") {
+      const p = parseNumbers(tokens, i, pending, mode, bible);
       if (p && (p.verses.length > 0 || p.chapterKw)) {
-        out.push(...toDetections(p, ctx.pendingBook, tokens, i, score(p, ctx.pendingBook, mode, true), "explicit"));
-        book = ctx.pendingBook;
+        out.push(...toDetections(p, pending, tokens, i, score(p, pending, mode, true), "explicit"));
+        book = pending;
         chapter = p.chapter;
+        pending = undefined;
         i = p.end;
         continue;
       }
@@ -435,27 +457,43 @@ export function detect(
 
     const w = tokens[i].text;
 
-    // 3. "chapter 4 verse 2" in the current book.
-    if (CHAPTER_KW.has(w) && book !== undefined) {
-      const p = parseNumbers(tokens, i, book, mode, bible);
+    // 3. "chapter 4 verse 2": in a book just named without its numbers ("in
+    // the book of Romans we read in chapter 12 verse 2", or "turn to Romans"
+    // at the end of the last text), else the current book.
+    const mentioned = bare && i - bare.end <= MENTION_REACH ? bare.book : pending;
+    const owner = mentioned ?? book;
+    if (CHAPTER_KW.has(w) && owner !== undefined) {
+      const p = parseNumbers(tokens, i, owner, mode, bible);
       if (p) {
-        out.push(...toDetections(p, book, tokens, i, score(p, book, mode, true) - (p.verses.length ? 0 : 0.1), "followup"));
+        // Named and then cited: as clear as "Romans chapter 12 verse 2" said in one breath.
+        const named = mentioned !== undefined;
+        out.push(...toDetections(p, owner, tokens, i, score(p, owner, mode, !named) - (p.verses.length ? 0 : 0.1), named ? "explicit" : "followup"));
+        book = owner;
         chapter = p.chapter;
+        bare = null;
+        pending = undefined;
         i = p.end;
         continue;
       }
     }
 
-    // 4. "verse 17", "verses 20 to 22" in the current chapter.
-    if (VERSE_KW.has(w) && w !== "v" && book !== undefined && chapter !== undefined && num(tokens[i + 1]) !== undefined) {
+    // 4. "verse 17", "verses 20 to 22" in the current chapter; "verse 5 of
+    // chapter 3" names its chapter after the verse.
+    if (VERSE_KW.has(w) && w !== "v" && book !== undefined && num(tokens[i + 1]) !== undefined) {
       const v = num(tokens[i + 1])!;
       const seed: NumberParse = {
-        chapter, verses: [[v, v]], end: i + 2,
+        chapter: chapter ?? 1, verses: [[v, v]], end: i + 2,
         colon: false, verseKw: true, chapterKw: false, adjacent: false, clamped: false,
       };
-      const p = finishVerses(tokens, seed, mode, bible, book);
-      if (p && p.verses.length > 0) {
+      let p = finishVerses(tokens, seed, mode, bible, book);
+      const of = p ? ofChapter(tokens, p.end) : null;
+      if (of) {
+        p = finishVerses(tokens, { ...seed, chapter: of.chapter }, mode, bible, book);
+        if (p) p.end = of.end;
+      }
+      if (p && p.verses.length > 0 && (chapter !== undefined || of)) {
         out.push(...toDetections(p, book, tokens, i, score(p, book, mode, true), "followup"));
+        chapter = p.chapter;
         i = p.end;
         continue;
       }

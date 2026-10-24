@@ -7,6 +7,7 @@ import { requireMembership, supabaseServer } from "@/lib/supabase/server";
 import { formatDuration } from "@/lib/format";
 import { DetectionCheck } from "./detection-check";
 import { ExportButton } from "./export";
+import { ScriptureCheck } from "./scripture-check";
 
 export const metadata = { title: "Service" };
 
@@ -114,6 +115,7 @@ export default async function ServicePage({ params }: { params: Promise<{ id: st
             ))}
             {!shown?.length && <li className="text-muted">None.</li>}
           </ol>
+          {!!shown?.length && !!segments?.length && m.role === "admin" && <ScriptureCheck serviceId={service.id} startedAt={service.started_at} />}
           {!!songs?.length && (
             <>
               <h2 className="mt-6 flex items-center gap-2 font-bold">

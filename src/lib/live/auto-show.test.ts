@@ -1,9 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { shapeOf, type Translation } from "@/lib/scripture/bible";
-import { detect, formatRef } from "@/lib/scripture/parser";
-import { HOLD_MS, HOLD_NUMBER_MS, holdMs, readiness } from "./auto-show";
+import { detect, formatRef, refKey } from "@/lib/scripture/parser";
+import { AUTO_REPEAT_MS, AutoShow, HOLD_MS, HOLD_NUMBER_MS, holdMs, readiness, type OnScreen } from "./auto-show";
 
 const kjv: Translation = JSON.parse(fs.readFileSync(path.join(__dirname, "../../../public/bibles/kjv.json"), "utf8"));
 const bible = shapeOf(kjv);
@@ -62,5 +62,78 @@ describe("auto mode readiness", () => {
 
   it("does not hold a short verse in a chapter that cannot reach 100", () => {
     expect(ready("Romans chapter eight verse one")).toBe("Romans 8:1 now");
+  });
+});
+
+describe("AutoShow", () => {
+  const partial = (a: AutoShow, text: string, final = false) => a.heard(detect(text, bible).detections, text, final, 100, 0);
+
+  let shown: string[];
+  let current: OnScreen | null;
+  let auto: AutoShow;
+  beforeEach(() => {
+    vi.useFakeTimers();
+    shown = [];
+    current = null;
+    auto = new AutoShow(bible, {
+      current: () => current,
+      show: (d) => {
+        shown.push(formatRef(d.ref));
+        current = { key: refKey(d.ref), ref: d.ref };
+      },
+    });
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it("waits on a number that may still grow, then shows the finished one", () => {
+    partial(auto, "Romans eight twenty");
+    expect(shown).toEqual([]);
+    partial(auto, "Romans eight twenty eight");
+    expect(shown).toEqual(["Romans 8:28"]);
+    vi.advanceTimersByTime(2000);
+    expect(shown).toEqual(["Romans 8:28"]);
+  });
+
+  it("shows a held number once the pause is long enough", () => {
+    partial(auto, "Luke chapter nine verse twenty");
+    expect(shown).toEqual([]);
+    vi.advanceTimersByTime(HOLD_NUMBER_MS - 1);
+    expect(shown).toEqual([]);
+    vi.advanceTimersByTime(1);
+    expect(shown).toEqual(["Luke 9:20"]);
+  });
+
+  it("never shows a chapter on its own, or a loose reference", () => {
+    partial(auto, "Psalm twenty three", true);
+    partial(auto, "Numbers six twenty four", true);
+    vi.advanceTimersByTime(2000);
+    expect(shown).toEqual([]);
+  });
+
+  it("doesn't put up what is already up, and doesn't bring back what was just cleared", () => {
+    partial(auto, "John 3:16 says", true);
+    expect(shown).toEqual(["John 3:16"]);
+    partial(auto, "John 3:16 again", true);
+    expect(shown).toEqual(["John 3:16"]);
+    current = null; // Esc
+    partial(auto, "John 3:16 once more", true);
+    expect(shown).toEqual(["John 3:16"]);
+    vi.advanceTimersByTime(AUTO_REPEAT_MS);
+    vi.setSystemTime(Date.now() + AUTO_REPEAT_MS);
+    partial(auto, "John 3:16 later", true);
+    expect(shown).toEqual(["John 3:16", "John 3:16"]);
+  });
+
+  it("widens the verse on screen when the preacher reads on", () => {
+    partial(auto, "John 3:16 says", true);
+    partial(auto, "John 3:16 to 18 says", true);
+    expect(shown).toEqual(["John 3:16", "John 3:16-18"]);
+  });
+
+  it("forgets a held reference on cancel", () => {
+    partial(auto, "Romans eight twenty");
+    auto.cancel();
+    vi.advanceTimersByTime(5000);
+    expect(shown).toEqual([]);
   });
 });

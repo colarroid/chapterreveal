@@ -6,7 +6,7 @@
 // would be a wrong verse on the big screen. A reference fires the moment it
 // can no longer grow, and waits briefly when its last word still might.
 
-import type { BibleShape, Detection } from "@/lib/scripture/parser";
+import { refKey, type BibleShape, type Detection, type VerseRef } from "@/lib/scripture/parser";
 
 /** Only clear citations go up without a click. */
 export const AUTO_MIN_CONFIDENCE = 0.85;
@@ -76,4 +76,79 @@ export function readiness(text: string, d: Detection, bible: BibleShape, final: 
 
   // Digits from the transcriber ("3:16") arrive whole.
   return "now";
+}
+
+// ---------------------------------------------------------------------------
+// The decision itself, kept out of the console so it can be tested on the
+// sequences of partial transcripts a real service produces.
+
+/** What the console has on the screen now, if anything. */
+export interface OnScreen {
+  key: string;
+  ref: VerseRef;
+}
+
+export interface AutoShowOptions {
+  /** What is on screen now, as the console knows it (by any route). */
+  current: () => OnScreen | null;
+  /** Put a heard reference on the screen. `heardAt` is performance.now() when the words arrived. */
+  show: (d: Detection, lagMs: number, heardAt: number) => void;
+  now?: () => number;
+}
+
+/**
+ * Takes every detection as it is heard and decides which go to the screen
+ * without a click: only clear citations, once they can no longer grow, not
+ * what is already up, and not what the operator just cleared or stepped
+ * past (unless the preacher widens it: "John 3:16" then "to 18").
+ */
+export class AutoShow {
+  private hold: ReturnType<typeof setTimeout> | null = null;
+  /** When each reference last went up by itself. */
+  private recent = new Map<string, number>();
+  private now: () => number;
+
+  constructor(
+    private bible: BibleShape,
+    private opts: AutoShowOptions,
+  ) {
+    this.now = opts.now ?? Date.now;
+  }
+
+  /** The newest detections from one piece of transcript, partial or final. */
+  heard(dets: Detection[], text: string, final: boolean, lagMs: number, heardAt: number): void {
+    // Newer words replace any reference we were waiting on.
+    this.cancel();
+    const candidates = dets.filter(eligible);
+    const d = candidates[candidates.length - 1];
+    if (!d) return;
+    const r = readiness(text, d, this.bible, final);
+    if (r === "now") this.fire(d, lagMs, heardAt);
+    else if (r === "hold") this.hold = setTimeout(() => this.fire(d, lagMs, heardAt), holdMs(text, d));
+  }
+
+  /** Forgets a reference waiting on its next word (Auto switched off, the service ended). */
+  cancel(): void {
+    if (this.hold) clearTimeout(this.hold);
+    this.hold = null;
+  }
+
+  private fire(d: Detection, lagMs: number, heardAt: number) {
+    this.hold = null;
+    const key = refKey(d.ref);
+    const cur = this.opts.current();
+    if (cur?.key === key) return;
+    // "John 3:16" then "to 18": widen what is already up.
+    const widens =
+      !!cur &&
+      cur.ref.book === d.ref.book &&
+      cur.ref.chapter === d.ref.chapter &&
+      cur.ref.verseStart === d.ref.verseStart &&
+      (d.ref.verseEnd ?? 0) > (cur.ref.verseEnd ?? cur.ref.verseStart ?? 0);
+    // Don't bring back something the operator just cleared or stepped past.
+    const last = this.recent.get(key);
+    if (!widens && last !== undefined && this.now() - last < AUTO_REPEAT_MS) return;
+    this.recent.set(key, this.now());
+    this.opts.show(d, lagMs, heardAt);
+  }
 }

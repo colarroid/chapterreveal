@@ -300,3 +300,41 @@ describe("Deuterocanonical books", () => {
     expect(found("Song of Songs 2:4", withDeutero)).toEqual(["Song of Solomon 2:4"]);
   });
 });
+
+describe("phrasings from the pulpit", () => {
+  it("joins a book named a few words before its chapter", () => {
+    expect(refs("in the book of Romans we read in chapter 12 verse 2")).toEqual(["Romans 12:2"]);
+    expect(refs("Paul, writing to the Philippians, says in chapter 4 verse 13")).toEqual(["Philippians 4:13"]);
+    // Clear enough for auto mode.
+    expect(detect("in the book of Romans we read in chapter 12 verse 2", bible).detections[0].confidence).toBeGreaterThanOrEqual(0.85);
+    // Across a pause, with words between.
+    const first = detect("Please turn with me to Romans", bible);
+    expect(refs("okay, so we are reading from chapter eight verse twenty eight", first.context)).toEqual(["Romans 8:28"]);
+  });
+
+  it("reads 'the first book of Samuel'", () => {
+    expect(refs("the first book of Samuel chapter seventeen verse forty five")).toEqual(["1 Samuel 17:45"]);
+    expect(refs("second book of Kings 2:11")).toEqual(["2 Kings 2:11"]);
+  });
+
+  it("takes 'verse 5 of chapter 3' to chapter 3", () => {
+    const afterJohn1 = detect("John 1:1", bible).context;
+    expect(refs("verse five of chapter three", afterJohn1)).toEqual(["John 3:5"]);
+    expect(refs("verses 16 to 18 of chapter 3", afterJohn1)).toEqual(["John 3:16-18"]);
+    expect(refs("verse 5 in chapter 3", afterJohn1)).toEqual(["John 3:5"]);
+  });
+
+  it("reads chapters listed after the word 'chapter' as chapters", () => {
+    // The Sermon on the Mount, not Matthew 5:6-7.
+    expect(refs("Matthew chapter five, six and seven")).toEqual(["Matthew 5"]);
+    expect(refs("Proverbs 3, 5 and 6")).toEqual(["Proverbs 3:5-6"]);
+    expect(refs("John chapter three verse sixteen")).toEqual(["John 3:16"]);
+  });
+
+  it("doesn't call Psalm 121 'not in the Bible' when it was heard as 'one twenty one'", () => {
+    const res = detect("Psalm one twenty one", bible);
+    expect(res.detections.map((d) => formatRef(d.ref))).toEqual(["Psalm 121"]);
+    expect(res.missing).toEqual([]);
+    expect(detect("Psalm one twenty one verse one", bible).missing).toEqual([]);
+  });
+});
