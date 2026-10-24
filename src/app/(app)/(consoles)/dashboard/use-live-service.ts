@@ -596,6 +596,12 @@ export function useLiveService({ churchId, userId, bible, silenceEndMinutes, onH
     endRef.current = end;
   }, [end]);
 
+  /** Sends the transcriber fresh hints (from `session`) while listening: a playlist chosen after Start. */
+  const updateSession = useCallback(() => {
+    const t = transcriber.current;
+    if (t && serviceRef.current) void t.update(sessionRef.current?.() ?? {});
+  }, []);
+
   // Hidden mid-service: stop listening here and leave the service for the
   // console that's now on screen (see Handoff).
   const suspend = useCallback(() => {
@@ -712,6 +718,7 @@ export function useLiveService({ churchId, userId, bible, silenceEndMinutes, onH
     toggleTest,
     start,
     end,
+    updateSession,
     ctxRef,
   };
 }

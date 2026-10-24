@@ -106,3 +106,25 @@ describe("lyrics pasted as one block", () => {
     expect(parsePastedLyrics(plain).slides.every((x) => !x.label)).toBe(true);
   });
 });
+
+describe("lyrics from SongSelect", () => {
+  it("reads numbered parts, and a part named again as a repeat", () => {
+    const r = parsePastedLyrics(
+      ["Verse 1", "Morning light is breaking", "Shadows flee away", "", "Chorus 1", "Morning light", "You are my morning light", "", "Verse 2", "Evening comes upon me", "You are near", "", "Chorus 1", "", "Bridge 2", "Shine on me", "Shine on me now", "", "Pre-Chorus 1", "Here it comes", "", "Turnaround", "Light light"].join("\n"),
+    );
+    expect(r.slides.map((s) => `${s.label ?? ""}|${s.text.replace(/\n/g, " / ")}`)).toEqual([
+      "Verse 1|Morning light is breaking / Shadows flee away",
+      "Chorus|Morning light / You are my morning light",
+      "Verse 2|Evening comes upon me / You are near",
+      "Chorus|Morning light / You are my morning light",
+      "Bridge 2|Shine on me / Shine on me now",
+      "Pre-chorus|Here it comes",
+      "Tag|Light light",
+    ]);
+  });
+
+  it("reads '[Chorus] (x2)' as the chorus again, and strips '(2x)' from a line", () => {
+    const r = parsePastedLyrics(["[Chorus]", "Morning light (2x)", "You are my light", "", "[Verse 2]", "Evening comes", "You are near", "", "[Chorus] (x2)"].join("\n"));
+    expect(r.slides.map((s) => s.text.replace(/\n/g, " / "))).toEqual(["Morning light / You are my light", "Evening comes / You are near", "Morning light / You are my light"]);
+  });
+});

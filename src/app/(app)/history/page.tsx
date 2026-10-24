@@ -4,6 +4,7 @@ import { PendingIcon } from "@/components/pending";
 import { Chip } from "@/components/ui";
 import { formatDuration } from "@/lib/format";
 import { requireMembership, supabaseServer } from "@/lib/supabase/server";
+import { SongReport } from "./song-report";
 
 export const metadata = { title: "History" };
 
@@ -24,6 +25,11 @@ export default async function HistoryPage() {
     <main className="mx-auto w-full max-w-4xl px-4 py-8">
       <h1 className="text-2xl font-bold">Service history</h1>
       <p className="mt-1 text-sm text-muted">Every service is saved with its full transcript and the verses that went on screen.</p>
+      {!!services?.length && (
+        <div className="mt-6">
+          <SongReport />
+        </div>
+      )}
 
       {!services?.length ? (
         <div className="mt-8 flex flex-col items-center card px-6 py-14 text-center">

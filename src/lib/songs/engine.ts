@@ -14,6 +14,13 @@ import type { SongIndex } from "./matcher";
  * rarely belong to another.
  */
 export const NEW_SONG = { lines: 2, reach: 6 };
+/**
+ * A song from the chosen playlist needs less: one finished line, with a few
+ * phrases of it in order. The operator planned those few songs, so a line
+ * they share with one of the thousands in the library doesn't count against
+ * them, and the first slide goes up a line sooner.
+ */
+export const NEW_SONG_PLANNED = { lines: 1, reach: 4 };
 /** A song the operator said was wrong isn't put up or suggested again for this long. */
 export const REJECT_MS = 2 * 60_000;
 
@@ -109,6 +116,8 @@ export class FollowEngine {
     // is chosen: a song nobody planned never jumps onto the screen.
     const inSet = this.playlist;
     let m = pick(inSet);
+    // Clearly one of the playlist's songs (not just the library's best guess).
+    const planned = !!m?.confident;
     if (!m?.confident) {
       const all = pick(this.library);
       if (all && (!m || all.score > m.score)) m = inSet ? { ...all, confident: false } : all;
@@ -152,7 +161,8 @@ export class FollowEngine {
     // line two songs share never decides, and a wrong song on the big
     // screen is worse than a line's wait.
     if (current?.id !== chosen.id) {
-      const sure = this.newSong.id === chosen.id && this.newSong.lines >= NEW_SONG.lines && (chosen.reach ?? 0) >= NEW_SONG.reach;
+      const need = planned && chosen.id === m?.id ? NEW_SONG_PLANNED : NEW_SONG;
+      const sure = this.newSong.id === chosen.id && this.newSong.lines >= need.lines && (chosen.reach ?? 0) >= need.reach;
       if (!sure) {
         return out("suggest", [{ id: chosen.id, slide: chosen.slide, score: chosen.score }, ...others.filter((c) => c.id !== chosen.id)].slice(0, 3));
       }

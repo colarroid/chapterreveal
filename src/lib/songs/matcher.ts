@@ -105,62 +105,182 @@ type Posting = number; // song << 12 | slide
 const pack = (song: number, slide: number): Posting => song * 4096 + slide;
 const unpack = (p: Posting) => ({ song: Math.floor(p / 4096), slide: p % 4096 });
 
+/** FNV-1a, 32-bit: a word as a number, so phrases can be numbers too. */
+function hash(s: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return h >>> 0;
+}
+// Each distinct word is hashed once; a library repeats its words endlessly.
+const wordHashes = new Map<string, number>();
+function wordHash(w: string): number {
+  let h = wordHashes.get(w);
+  if (h === undefined) wordHashes.set(w, (h = hash(w)));
+  return h;
+}
+/** Folds one more number into a running hash. */
+function mix(h: number, x: number): number {
+  h = Math.imul(h ^ x, 0x85ebca6b);
+  h ^= h >>> 13;
+  return Math.imul(h, 0xc2b2ae35) >>> 0;
+}
+// Phrases as numbers: three words in a row, two words (tagged apart), and
+// three words by sound (tagged apart again).
+const triple = (a: string, b: string, c: string) => mix(mix(mix(1, wordHash(a)), wordHash(b)), wordHash(c));
+const pair = (a: string, b: string) => mix(mix(2, wordHash(a)), wordHash(b));
+const soundTriple = (a: string, b: string, c: string) => mix(mix(mix(3, wordHash(a)), wordHash(b)), wordHash(c));
+
+/**
+ * The index packed into typed arrays: every phrase hash once, in order, with
+ * where its postings start, and the postings themselves. A library of
+ * thousands of songs holds over a million postings; as strings and arrays
+ * that was hundreds of megabytes, which a media-desk PC can't spare.
+ */
+interface Packed {
+  keys: Uint32Array;
+  starts: Uint32Array;
+  posts: Uint32Array;
+  /** Per song, per slide: the slides with the same words (a chorus sung again). */
+  twins: number[][][];
+  /** Each song's distinct phrases, to tell when two songs are copies of each other. */
+  phrases: Set<number>[];
+}
+
+/** Reads songs in one at a time, so a build can pause between songs and let the browser breathe. */
+class Builder {
+  private hashes: number[] = [];
+  private posts: number[] = [];
+  private twins: number[][][] = [];
+  private phrases: Set<number>[] = [];
+  // The same word sounds the same every time: work it out once.
+  private sounds = new Map<string, string>();
+
+  private sound(w: string): string {
+    let k = this.sounds.get(w);
+    if (k === undefined) this.sounds.set(w, (k = soundKey(w)));
+    return k;
+  }
+
+  add(song: IndexedSong) {
+    const si = this.twins.length;
+    const slideWords = song.slides.slice(0, 4096).map((sl) => words(sl.text));
+    const all = slideWords.flat();
+    const set = new Set<number>();
+    for (let i = 0; i + 2 < all.length; i++) set.add(triple(all[i], all[i + 1], all[i + 2]));
+    this.phrases.push(set);
+    const byText = new Map<string, number[]>();
+    const keys = slideWords.map((w, i) => {
+      const key = w.join(" ");
+      byText.set(key, [...(byText.get(key) ?? []), i]);
+      return key;
+    });
+    this.twins.push(keys.map((k) => byText.get(k)!));
+    let carry: string[] = [];
+    slideWords.forEach((w, li) => {
+      // The last words of the slide before join this one's first, so a
+      // phrase sung across the change still points at the new slide.
+      const seq = [...carry, ...w];
+      const seen = new Set<number>();
+      for (let i = 0; i + 2 < seq.length; i++) seen.add(triple(seq[i], seq[i + 1], seq[i + 2]));
+      // Pairs too, marked apart, for slides of one or two short lines.
+      for (let i = 0; i + 1 < w.length; i++) seen.add(pair(w[i], w[i + 1]));
+      // And by sound, for words the transcriber heard slightly wrong.
+      const k = seq.map((x) => this.sound(x));
+      for (let i = 0; i + 2 < k.length; i++) seen.add(soundTriple(k[i], k[i + 1], k[i + 2]));
+      const posting = pack(si, li);
+      for (const g of seen) {
+        this.hashes.push(g);
+        this.posts.push(posting);
+      }
+      carry = w.slice(-2);
+    });
+  }
+
+  finish(): Packed {
+    // Group the postings by phrase: sort them by hash (two counting-sort
+    // passes over the hash's halves, linear time), then read off each
+    // distinct hash and where its postings start.
+    const n = this.hashes.length;
+    const hashes = Uint32Array.from(this.hashes);
+    const posts = Uint32Array.from(this.posts);
+    let order = new Uint32Array(n);
+    for (let i = 0; i < n; i++) order[i] = i;
+    for (const shift of [0, 16]) {
+      const counts = new Uint32Array(65537);
+      for (let i = 0; i < n; i++) counts[((hashes[order[i]] >>> shift) & 0xffff) + 1]++;
+      for (let d = 1; d <= 65536; d++) counts[d] += counts[d - 1];
+      const next = new Uint32Array(n);
+      for (let i = 0; i < n; i++) next[counts[(hashes[order[i]] >>> shift) & 0xffff]++] = order[i];
+      order = next;
+    }
+    const sortedPosts = new Uint32Array(n);
+    const keys: number[] = [];
+    const starts: number[] = [];
+    let last = -1;
+    for (let i = 0; i < n; i++) {
+      const h = hashes[order[i]];
+      sortedPosts[i] = posts[order[i]];
+      if (h !== last) {
+        keys.push(h);
+        starts.push(i);
+        last = h;
+      }
+    }
+    starts.push(n);
+    return { keys: Uint32Array.from(keys), starts: Uint32Array.from(starts), posts: sortedPosts, twins: this.twins, phrases: this.phrases };
+  }
+}
+
 export class SongIndex {
   readonly songs: IndexedSong[];
-  private grams = new Map<string, Posting[]>();
-  /** Per song, per slide: the slides with the same words (a chorus sung again). */
+  private keys: Uint32Array;
+  private starts: Uint32Array;
+  private posts: Uint32Array;
   private twins: number[][][];
-  /** Each song's distinct words, to tell when two songs are copies of each other. */
-  private phrases: Set<string>[];
+  private phrases: Set<number>[];
 
-  constructor(songs: IndexedSong[]) {
+  /** Indexes the songs now, in one go (fine for a playlist or a test; thousands of songs take a couple of seconds: see build). */
+  constructor(songs: IndexedSong[], packed?: Packed) {
     this.songs = songs;
-    // Each slide's words, worked out once (thousands of songs load at once).
-    const slideWords = songs.map((song) => song.slides.map((sl) => words(sl.text)));
-    // The same word sounds the same every time: work it out once too.
-    const sounds = new Map<string, string>();
-    const sound = (w: string) => {
-      let k = sounds.get(w);
-      if (k === undefined) sounds.set(w, (k = soundKey(w)));
-      return k;
-    };
-    this.phrases = slideWords.map((slides) => {
-      const w = slides.flat();
-      const set = new Set<string>();
-      for (let i = 0; i + 2 < w.length; i++) set.add(`${w[i]} ${w[i + 1]} ${w[i + 2]}`);
-      return set;
-    });
-    this.twins = slideWords.map((slides) => {
-      const byText = new Map<string, number[]>();
-      const keys = slides.map((w, i) => {
-        const key = w.join(" ");
-        byText.set(key, [...(byText.get(key) ?? []), i]);
-        return key;
-      });
-      return keys.map((k) => byText.get(k)!);
-    });
-    songs.forEach((song, si) => {
-      let carry: string[] = [];
-      song.slides.slice(0, 4096).forEach((_, li) => {
-        const w = slideWords[si][li];
-        // The last words of the slide before join this one's first, so a
-        // phrase sung across the change still points at the new slide.
-        const seq = [...carry, ...w];
-        const seen = new Set<string>();
-        for (let i = 0; i + 2 < seq.length; i++) seen.add(`${seq[i]} ${seq[i + 1]} ${seq[i + 2]}`);
-        // Pairs too, marked apart, for slides of one or two short lines.
-        for (let i = 0; i + 1 < w.length; i++) seen.add(`2:${w[i]} ${w[i + 1]}`);
-        // And by sound, for words the transcriber heard slightly wrong.
-        const k = seq.map(sound);
-        for (let i = 0; i + 2 < k.length; i++) seen.add(`s:${k[i]} ${k[i + 1]} ${k[i + 2]}`);
-        for (const g of seen) {
-          let list = this.grams.get(g);
-          if (!list) this.grams.set(g, (list = []));
-          list.push(pack(si, li));
-        }
-        carry = w.slice(-2);
-      });
-    });
+    if (!packed) {
+      const b = new Builder();
+      for (const song of songs) b.add(song);
+      packed = b.finish();
+    }
+    this.keys = packed.keys;
+    this.starts = packed.starts;
+    this.posts = packed.posts;
+    this.twins = packed.twins;
+    this.phrases = packed.phrases;
+  }
+
+  /**
+   * Indexes a whole library without freezing the console: it pauses every
+   * so many songs to let the browser draw and answer clicks. The console
+   * keeps its old index until this one is ready.
+   */
+  static async build(songs: IndexedSong[], yieldEvery = 100): Promise<SongIndex> {
+    const b = new Builder();
+    for (let i = 0; i < songs.length; i++) {
+      b.add(songs[i]);
+      if ((i + 1) % yieldEvery === 0) await new Promise((r) => setTimeout(r, 0));
+    }
+    return new SongIndex(songs, b.finish());
+  }
+
+  /** Where a phrase's postings are: [from, to) in posts; empty when it's in no song. */
+  private range(h: number): [number, number] {
+    let lo = 0;
+    let hi = this.keys.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1;
+      if (this.keys[mid] < h) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo < this.keys.length && this.keys[lo] === h ? [this.starts[lo], this.starts[lo + 1]] : [0, 0];
   }
 
   /**
@@ -178,12 +298,12 @@ export class SongIndex {
     const hits = new Map<number, Hit[]>();
     // `phrase`: the three words by sound, so the same phrase heard as
     // words and as sounds, or sung twice, counts once towards reach.
-    const add = (g: string, weight: number, at: number, phrase?: string) => {
-      const list = this.grams.get(g);
-      if (!list) return;
-      const idf = weight / Math.log2(2 + list.length);
-      for (const p of list) {
-        const { song, slide } = unpack(p);
+    const add = (g: number, weight: number, at: number, phrase?: number) => {
+      const [from, to] = this.range(g);
+      if (from === to) return;
+      const idf = weight / Math.log2(2 + (to - from));
+      for (let i = from; i < to; i++) {
+        const { song, slide } = unpack(this.posts[i]);
         if (opts.only !== undefined && song !== opts.only) continue;
         let h = hits.get(song);
         if (!h) hits.set(song, (h = []));
@@ -191,10 +311,10 @@ export class SongIndex {
       }
     };
     const k = w.map(soundKey);
-    const phraseAt = (i: number) => `${k[i]} ${k[i + 1]} ${k[i + 2]}`;
-    for (let i = 0; i + 2 < w.length; i++) add(`${w[i]} ${w[i + 1]} ${w[i + 2]}`, 1, i + 2, phraseAt(i));
-    for (let i = 0; i + 1 < w.length; i++) add(`2:${w[i]} ${w[i + 1]}`, 0.35, i + 1);
-    for (let i = 0; i + 2 < k.length; i++) add(`s:${phraseAt(i)}`, 0.6, i + 2, phraseAt(i));
+    const phraseAt = (i: number) => soundTriple(k[i], k[i + 1], k[i + 2]);
+    for (let i = 0; i + 2 < w.length; i++) add(triple(w[i], w[i + 1], w[i + 2]), 1, i + 2, phraseAt(i));
+    for (let i = 0; i + 1 < w.length; i++) add(pair(w[i], w[i + 1]), 0.35, i + 1);
+    for (let i = 0; i + 2 < k.length; i++) add(phraseAt(i), 0.6, i + 2, phraseAt(i));
     if (!hits.size) return null;
 
     const scored: Candidate[] = [];
@@ -293,7 +413,7 @@ export class SongIndex {
   }
 }
 
-type Hit = { at: number; slide: number; weight: number; phrase?: string };
+type Hit = { at: number; slide: number; weight: number; phrase?: number };
 
 /**
  * The best run of phrases through one song: heard in order, each on the
@@ -322,7 +442,10 @@ function bestRun(list: Hit[]): { score: number; slide: number; reach: number } {
   }
   // How much of the song the run heard: its distinct phrases. A line sung
   // five times is still one line.
-  const phrases = new Set<string>();
-  for (let i = top.end; i >= 0; i = prev[i]) if (hits[i].phrase) phrases.add(hits[i].phrase!);
+  const phrases = new Set<number>();
+  for (let i = top.end; i >= 0; i = prev[i]) {
+    const ph = hits[i].phrase;
+    if (ph !== undefined) phrases.add(ph);
+  }
   return { score: top.score, slide: top.slide, reach: phrases.size };
 }

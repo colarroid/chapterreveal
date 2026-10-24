@@ -88,6 +88,28 @@ describe("transcriber audio backlog", () => {
     expect(t.audioSeconds).toBeCloseTo(400 / 32000);
   });
 
+  it("opens a new socket for new hints and keeps the audio from between", async () => {
+    const t = new Transcriber(events(), { mode: "worship", keyterms: ["old"] });
+    await t.start();
+    const first = FakeSocket.instances[0];
+    first.open();
+    t.send(chunk(100));
+    const updated = t.update({ mode: "worship", keyterms: ["new"] });
+    t.send(chunk(300));
+    await updated;
+    const second = FakeSocket.instances[1];
+    expect(second).toBeDefined();
+    expect(first.readyState).toBe(3);
+    second.open();
+    expect(second.audioBytes).toBe(300);
+    const body = JSON.parse((vi.mocked(fetch).mock.calls[1][1] as { body: string }).body) as { keyterms: string[] };
+    expect(body.keyterms).toEqual(["new"]);
+    // The old socket's close doesn't start a retry.
+    first.drop();
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(FakeSocket.instances).toHaveLength(2);
+  });
+
   it("drops the oldest audio past the limit", async () => {
     const t = new Transcriber(events());
     await t.start();

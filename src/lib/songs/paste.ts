@@ -37,43 +37,51 @@ const JUNK = [
   /^more lyrics/i,
 ];
 
+// Each may carry a number, as SongSelect writes them ("Chorus 1", "Bridge 2").
+// A verse keeps its number in the label; the rest drop it, except where the
+// song really has two different choruses or bridges (see heading).
 const SECTION: [RegExp, string][] = [
   [/^(?:verse|v)\s*(\d+)?$/i, "Verse"],
-  [/^(?:chorus|refrain|hook|ch)$/i, "Chorus"],
-  [/^(?:pre[-\s]?chorus|pre)$/i, "Pre-chorus"],
-  [/^bridge$/i, "Bridge"],
-  [/^(?:tag|vamp|interlude|instrumental)$/i, "Tag"],
-  [/^intro$/i, "Intro"],
-  [/^(?:outro|ending|end|coda)$/i, "Ending"],
+  [/^(?:chorus|refrain|hook|ch)\s*(\d+)?$/i, "Chorus"],
+  [/^(?:pre[-\s]?chorus|pre)\s*(\d+)?$/i, "Pre-chorus"],
+  [/^bridge\s*(\d+)?$/i, "Bridge"],
+  [/^(?:tag|vamp|interlude|instrumental|turnaround)\s*(\d+)?$/i, "Tag"],
+  [/^intro\s*(\d+)?$/i, "Intro"],
+  [/^(?:outro|ending|end|coda)\s*(\d+)?$/i, "Ending"],
 ];
 
-// "[Chorus: Artist]", "Verse 2:", "(Bridge)", "CHORUS x2", "Repeat chorus"
+// "[Chorus: Artist]", "Verse 2:", "(Bridge)", "CHORUS x2", "Repeat chorus",
+// "[Chorus] (x2)", "Chorus 1", "Bridge 2"
 function heading(line: string): { label: string; repeatOf?: string } | null {
   let t = line.trim();
   const repeat = /^repeat\s+/i.test(t) || /\brepeat\)?\s*$/i.test(t);
   t = t
     .replace(/^repeat\s+/i, "")
+    // "x2", "(x2)", "2x" at the end, with or without a bracketed heading before it.
+    .replace(/\s*[[(]?\s*(?:(?:x|×)\s*\d+|\d+\s*(?:x|×))\s*[\])]?\s*$/i, "")
+    .replace(/\s*\(?repeat\)?$/i, "")
     .replace(/^[[(]\s*|\s*[\])]$/g, "")
     .replace(/\s*[:\-–]\s*.*$/, (m) => (/^\s*[:\-–]\s*\d+\s*$/.test(m) ? m : "")) // drop ": Artist"
     .replace(/[:\-–]\s*$/, "")
-    .replace(/\s*\(?\s*(?:x|×)\s*\d+\s*\)?$/i, "")
-    .replace(/\s*\(?repeat\)?$/i, "")
     .trim();
   if (t.length > 24) return null;
   for (const [re, name] of SECTION) {
     const m = t.match(re);
     if (m) {
-      const label = name === "Verse" && m[1] ? `Verse ${m[1]}` : name;
+      // "Verse 2" keeps its number; "Chorus 2" does too (a second chorus),
+      // but "Chorus 1" is just the chorus, as "Bridge 1" is the bridge.
+      const n = m[1] ? Number(m[1]) : 0;
+      const label = name === "Verse" && n ? `Verse ${n}` : n > 1 ? `${name} ${n}` : name;
       return repeat ? { label, repeatOf: label } : { label };
     }
   }
   return null;
 }
 
-// "(x2)", "x3", "[Repeat]" at the end of a lyric line.
+// "(x2)", "x3", "(2x)", "[Repeat]" at the end of a lyric line.
 export const cleanLyric = (l: string) =>
   l
-    .replace(/\s*[[(]?\s*(?:x|×)\s*\d+\s*[\])]?\s*$/i, "")
+    .replace(/\s*[[(]?\s*(?:(?:x|×)\s*\d+|\d+\s*(?:x|×))\s*[\])]?\s*$/i, "")
     .replace(/\s*[[(]\s*repeat\s*[\])]\s*$/i, "")
     .replace(/\s+/g, " ")
     .trim();

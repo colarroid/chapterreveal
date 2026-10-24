@@ -155,6 +155,25 @@ export class Transcriber {
     };
   }
 
+  /**
+   * New hints for the transcriber (a playlist chosen mid-worship): they go
+   * in the socket's address, so the socket is opened again. Audio captured
+   * meanwhile waits in the backlog; nothing is lost.
+   */
+  async update(request: SessionRequest): Promise<void> {
+    this.request = request;
+    if (this.closing || !this.ws) return;
+    const old = this.ws;
+    this.ws = null;
+    if (this.keepAlive) clearInterval(this.keepAlive);
+    this.keepAlive = null;
+    // Its last words first, then it goes; its onclose sees it's been replaced.
+    if (old.readyState === WebSocket.OPEN) old.send(JSON.stringify({ type: "CloseStream" }));
+    old.close();
+    this.ev.onStatus("reconnecting");
+    await this.connect();
+  }
+
   private scheduleRetry() {
     if (this.closing) return;
     this.ev.onStatus("reconnecting");

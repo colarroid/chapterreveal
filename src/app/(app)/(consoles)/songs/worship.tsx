@@ -88,6 +88,25 @@ const fold = (s: string) =>
 /** Per song, per slide index: the words as they'll be sung today. */
 type Edits = Record<string, Record<number, string>>;
 
+const EDITS_KEY = "scripture.worshipEdits";
+/** Edits for today are forgotten after this long. */
+const EDITS_FOR_MS = 12 * 60 * 60_000;
+function loadEdits(churchId: string): Edits {
+  try {
+    const raw = sessionStorage.getItem(`${EDITS_KEY}:${churchId}`);
+    if (!raw) return {};
+    const { at, edits } = JSON.parse(raw) as { at: number; edits: Edits };
+    return Date.now() - at < EDITS_FOR_MS ? edits : {};
+  } catch {
+    return {};
+  }
+}
+function keepEdits(churchId: string, edits: Edits) {
+  try {
+    sessionStorage.setItem(`${EDITS_KEY}:${churchId}`, JSON.stringify({ at: Date.now(), edits }));
+  } catch {}
+}
+
 function withEdits(song: FullSong, edits: Edits): FullSong {
   const e = edits[song.id];
   if (!e || !Object.keys(e).length) return song;
@@ -158,7 +177,24 @@ export function Worship({
     if (songs && songs !== songsInMemory(churchId)) keepSongs(churchId, songs);
   }, [songs, churchId]);
   const byId = useMemo(() => new Map((songs ?? []).map((s, i) => [s.id, i])), [songs]);
-  const index = useMemo(() => (songs ? new SongIndex(songs) : null), [songs]);
+  // The whole library indexed for detection: built in the background (about
+  // a second for thousands of songs, pausing so the console stays
+  // responsive), and only when a song's words change. A flag changing on a
+  // song (it joined the church's library) keeps the index as it is.
+  const [index, setLibraryIndex] = useState<SongIndex | null>(null);
+  const indexed = useRef<FullSong[] | null>(null);
+  const building = useRef(0);
+  useEffect(() => {
+    if (!songs) return;
+    const last = indexed.current;
+    if (last && last.length === songs.length && last.every((s, i) => s.id === songs[i].id && s.title === songs[i].title && s.slides === songs[i].slides)) return;
+    indexed.current = songs;
+    const token = ++building.current;
+    void SongIndex.build(songs).then((idx) => {
+      // A newer build is on its way: this one is out of date.
+      if (building.current === token) setLibraryIndex(idx);
+    });
+  }, [songs]);
 
   // ---- Setlists --------------------------------------------------------------
   // The chosen setlist's songs are listened for first; songs outside it are
@@ -230,9 +266,16 @@ export function Worship({
   }, []);
   const screen = useRef<ScreenSender | null>(null);
   // Words changed for this service only (a choir that sings it differently).
-  // Kept in memory, never saved: reloading or ending worship drops them.
+  // Never saved to the library; kept in this tab for the day, so a reload
+  // after a crash mid-service doesn't lose them.
   const [edits, setEdits] = useState<Edits>({});
   const editsRef = useRef(edits);
+  useEffect(() => {
+    const kept = loadEdits(churchId);
+    if (!Object.keys(kept).length) return;
+    editsRef.current = kept;
+    setEdits(kept);
+  }, [churchId]);
   const original = current ? (songs?.[byId.get(current.id) ?? -1] ?? null) : null;
   const currentSong = useMemo(() => (original ? withEdits(original, edits) : null), [original, edits]);
 
@@ -256,11 +299,12 @@ export function Worship({
     else next[songId][index] = text;
     editsRef.current = next;
     setEdits(next);
+    keepEdits(churchId, next);
     // The edited slide is on screen: show the new words straight away.
     const cur = currentRef.current;
     const song = songById(songId);
     if (liveRef.current && cur?.id === songId && cur.slide === index && song) void screen.current?.show(toSlide(song, index));
-  }, [songById]);
+  }, [songById, churchId]);
   const selectedSlide = currentSong && current ? toSlide(currentSong, current.slide) : null;
 
   // ---- The order songs are sung in ------------------------------------------
@@ -451,11 +495,16 @@ export function Worship({
   }, []);
   // How widely each song is sung (migration 0027): a small lift for
   // well-known songs and this church's recent ones, to settle near-ties.
+  // The songs this church sang in the last few months: hints for the
+  // transcriber when no playlist is chosen.
+  const recentIds = useRef<string[]>([]);
   useEffect(() => {
     void supabaseBrowser()
       .rpc("song_usage")
       .then(({ data }) => {
-        engine.current.usage = usageLift((data ?? []) as Parameters<typeof usageLift>[0]);
+        const rows = (data ?? []) as Parameters<typeof usageLift>[0];
+        engine.current.usage = usageLift(rows);
+        recentIds.current = rows.filter((r) => r.here_recently).map((r) => r.song_id);
       });
   }, []);
   // The detection log (migration 0027), set up once the service is known.
@@ -632,15 +681,25 @@ export function Worship({
   );
 
   // Hints for the transcriber: the setlist's songs, or with no setlist the
-  // song that's open. Read when Start worship is pressed.
+  // song that's open and the church's recent songs. Read when Start worship
+  // is pressed, and again when the playlist changes while listening.
   const hintSongs = useRef<FullSong[]>([]);
   useEffect(() => {
-    const ids = activeSetlist?.song_ids.length ? activeSetlist.song_ids : current ? [current.id] : [];
-    hintSongs.current = ids.map((id) => songs?.[byId.get(id) ?? -1]).filter((s): s is FullSong => !!s);
+    const ids = activeSetlist?.song_ids.length ? activeSetlist.song_ids : [...(current ? [current.id] : []), ...recentIds.current];
+    hintSongs.current = [...new Set(ids)].map((id) => songs?.[byId.get(id) ?? -1]).filter((s): s is FullSong => !!s);
   }, [activeSetlist, current, songs, byId]);
   const session = useCallback(() => ({ mode: "worship" as const, keyterms: songKeyterms(hintSongs.current) }), []);
 
   const live = useLiveService({ churchId, userId, bible: null, silenceEndMinutes, onText, session });
+  const playlistKey = activeSetlist ? `${activeSetlist.id}:${activeSetlist.song_ids.join()}` : "";
+  const updateSession = useRef(live.updateSession);
+  updateSession.current = live.updateSession;
+  const listening = live.phase === "live";
+  const listeningRef = useRef(listening);
+  listeningRef.current = listening;
+  useEffect(() => {
+    if (listeningRef.current) updateSession.current();
+  }, [playlistKey]);
   useEffect(() => {
     if (live.phase === "idle") {
       sung.current = "";

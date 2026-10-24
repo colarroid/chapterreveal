@@ -94,6 +94,20 @@ describe("FollowEngine", () => {
     expect(e.hear(heard("every morning brand new your kindness", { ...at, now: 1200 })).show).toMatchObject({ id: "river", slide: 1 });
   });
 
+  it("puts a playlist song up after one line, where a library song needs two", () => {
+    const line = "i lay my burdens down every morning brand new";
+    const open = engine().hear(heard(line));
+    expect(open.show).toBeNull();
+    const e = engine();
+    e.playlist = new SongIndex([library.songs[0], library.songs[1]]);
+    const o = e.hear(heard(line));
+    expect(o).toMatchObject({ decision: "auto", show: { id: "river", how: "auto" } });
+    // Still never from a single line two songs share.
+    const f = engine();
+    f.playlist = new SongIndex([library.songs[0], library.songs[2]]);
+    expect(f.hear(heard("down by the river of mercy")).show).toBeNull();
+  });
+
   it("keeps songs outside the playlist to suggestions", () => {
     const e = engine();
     e.playlist = new SongIndex([library.songs[1]]);

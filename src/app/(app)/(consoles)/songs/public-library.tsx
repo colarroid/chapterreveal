@@ -42,9 +42,15 @@ export function PublicLibrary({ copied, onCopy }: { copied: Set<string>; onCopy:
     }
     let live = true;
     const t = setTimeout(async () => {
-      const pattern = `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+      const escape = (s: string) => s.replace(/[\\%_]/g, (c) => `\\${c}`);
+      const pattern = `%${escape(q)}%`;
+      // The words column (migration 0038) holds the lyrics in lower case
+      // without punctuation, indexed for this search; the query is folded
+      // the same way. Before that migration runs, the plain lyrics.
+      const folded = q.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
       const base = () => supabaseBrowser().from("songs").select("id, title, author, first_line").is("church_id", null).order("title").limit(LIMIT);
-      const [byTitle, byWords] = await Promise.all([base().ilike("title", pattern), base().ilike("body", pattern)]);
+      const [byTitle, indexed] = await Promise.all([base().ilike("title", pattern), base().ilike("words", `%${escape(folded)}%`)]);
+      const byWords = indexed.error ? await base().ilike("body", pattern) : indexed;
       if (!live) return;
       const seen = new Map<string, PublicSong>();
       for (const r of [...(byTitle.data ?? []), ...(byWords.data ?? [])] as PublicSong[]) if (!seen.has(r.id)) seen.set(r.id, r);
